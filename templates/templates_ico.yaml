@@ -1,0 +1,18 @@
+dataset: ico
+templates:
+  ico-fraud-classification: !Template
+    name: ico_fraud_detection
+    id: ico-fraud-classification-001
+    reference: 'ICO Fraud Classification using TabLLM'
+    answer_choices: 'No Fraud ||| Fraud'
+    jinja: '{{note}}
+      
+      
+      Based on the ICO project information above, is this project fraudulent? Answer Fraud or No Fraud.
+      Answer: 
+      |||
+      {{ answer_choices[label] }}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      metrics: ['f1', 'precision', 'recall']
+      original_task: true

@@ -29,6 +29,7 @@ from helper.note_template import NoteTemplate
 from helper.external_datasets_variables import *
 from helper.preprocess import preprocess
 
+
 logger = logging.getLogger(__name__)
 
 cat_idx_dict = {
@@ -41,6 +42,7 @@ cat_idx_dict = {
     "bank": [1,2,3,4,6,7,8,10,15],
     "jungle": [],
     "calhousing": [],
+    "ico": [0,4,5,6,8,9,10,17,18,19,20,21,22],  # categorical features for ICO
 }
 bin_num = 10
 
@@ -50,10 +52,10 @@ def main():
     logging.basicConfig(level=logging.INFO)
 
     # Configuration
-    data_dir = Path("/root/TabLLM/datasets")
+    data_dir = Path("/work/TabLLM/datasets")
     data_dir = data_dir / args.dataset
     temp_output = 'dataset-generation-' + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    output_dir = Path("/root/TabLLM/datasets_serialized") / temp_output
+    output_dir = Path("/work/TabLLM/datasets_serialized") / temp_output
     if not args.debug:
         os.mkdir(output_dir)
     logger.info(f"Generate dataset {args.dataset}.")
@@ -363,13 +365,25 @@ def load_train_validation_test(dataset_name, data_dir):
         dataset_train, dataset_valid, dataset_test = train_validation_test_split(dataset)
         assert len(dataset_train) + len(dataset_valid) + len(dataset_test) == original_size
 
+    elif dataset_name == "ico":
+        # Load ICO fraud dataset
+        dataset = pd.read_csv(data_dir / 'common_features.csv')
+        original_size = len(dataset)
+        # Convert riskLevel to binary: 1 = No Fraud (0), >1 = Fraud (1)
+        dataset['label'] = (dataset['riskLevel'] > 1).astype(int)
+        # Drop non-feature columns: target, IDs, and fraud-only descriptive variables
+        columns_to_drop = ['riskLevel', 'name_check', 'token_check', 'dc_Category', 'dc_EntryDate', 'dc_Summary']
+        dataset = dataset.drop(columns=columns_to_drop)
+        dataset_train, dataset_valid, dataset_test = train_validation_test_split(dataset)
+        assert len(dataset_train) + len(dataset_valid) + len(dataset_test) == original_size
+
     else:
         raise ValueError("Dataset not found")
 
     # For final experiments, ensure correct numbers of features for each dataset
     dataset_specs = {
         'income': 13,
-        'car': 7,
+        'car': 7,  
         'heart': 12,
         'diabetes': 9,
         'creditg': 21,
@@ -377,7 +391,8 @@ def load_train_validation_test(dataset_name, data_dir):
         'bank': 17,
         'jungle': 7,
         'wine': 12,
-        'calhousing': 9
+        'calhousing': 9,
+        'ico': 24  # 23 features + 1 label (excluding riskLevel, name_check, token_check, dc_Category, dc_EntryDate, dc_Summary)
     }
     assert dataset_name in dataset_specs.keys() and len(dataset.columns) == dataset_specs[dataset_name]
 
@@ -558,4 +573,6 @@ def parse_args():
 
 
 if __name__ == '__main__':
+    import sys
+    sys.argv = ['create_external_datasets.py', '--dataset', 'ico', '--debug', '--list']
     main()

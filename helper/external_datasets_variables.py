@@ -652,3 +652,72 @@ template_wine_list_values = '${fixed_acidity}\n' \
 template_config_wine_list_values = template_config_wine_list
 template_wine_list_shuffled = template_wine_list
 template_config_wine_list_shuffled = template_config_wine_list
+
+########################################################################################################################
+# ico (ICO Fraud Classification)
+########################################################################################################################
+# ICO fraud classification dataset with various features related to Initial Coin Offerings
+# Note: riskLevel is the target variable (>1 = fraud), name_check/token_check are IDs, 
+# dc_Category/dc_EntryDate/dc_Summary are fraud-only descriptive variables
+
+# Only include actual features for training (exclude target, IDs, and fraud-only descriptive variables)
+ico_feature_names = [
+    ('country_combined', 'country'),
+    ('ICODuration_combined', 'ICO duration'),
+    ('preICODuration_combined', 'pre-ICO duration'),
+    ('rating_combined', 'rating'),
+    ('ERC20_combined', 'ERC20 token'),
+    ('is_Ethereum_based', 'Ethereum based'),
+    ('token_type', 'token type'),
+    ('price_USD', 'token price'),
+    ('whitelist', 'has whitelist'),
+    ('kyc', 'KYC required'),
+    ('bounty', 'bounty program'),
+    ('teamSize_combined', 'team size'),
+    ('tokensForSale_combined', 'tokens for sale'),
+    ('soldTokens_combined', 'sold tokens'),
+    ('distributedInICO_combined', 'token distribution % to investor'),
+    ('has_softCap', 'has soft cap'),
+    ('has_hardCap', 'has hard cap'),
+    ('raised_USD', 'amount raised'),
+    ('has_website', 'website'),
+    ('has_whitepaper', 'whitepaper'),
+    ('has_twitter', 'Twitter'),
+    ('has_github', 'GitHub'),
+    ('has_telegram', 'Telegram')
+]
+
+# Basic preprocessing configuration for ICO data
+template_config_ico = {
+    'pre': {
+        'ICODuration_combined': lambda x: f"{int(x)} days" if pd.notna(x) and x > 0 else "unknown",
+        'preICODuration_combined': lambda x: f"{int(x)} days" if pd.notna(x) and x > 0 else "unknown",
+        'rating_combined': lambda x: f"{x:.2f}" if pd.notna(x) else "unknown",
+        'price_USD': lambda x: f"${x:.4f}" if pd.notna(x) and x > 0 else "unknown",
+        'teamSize_combined': lambda x: f"{int(x)} members" if pd.notna(x) and x > 0 else "unknown",
+        'tokensForSale_combined': lambda x: f"{int(x):,}" if pd.notna(x) and x > 0 else "unknown",
+        'soldTokens_combined': lambda x: f"{int(x):,}" if pd.notna(x) and x > 0 else "unknown",
+        'distributedInICO_combined': lambda x: f"{x:.2f}" if pd.notna(x) else "unknown",
+        'raised_USD': lambda x: f"${int(x):,}" if pd.notna(x) and str(x).replace(',', '').isdigit() else "unknown",
+        'ERC20_combined': lambda x: "Yes" if x == "Yes" else "No",
+        'is_Ethereum_based': lambda x: "Yes" if x == "Yes" else "No",
+        'whitelist': lambda x: "Yes" if x == "Yes" else "No",
+        'kyc': lambda x: "Yes" if x == "Yes" else "No",
+        'bounty': lambda x: "Yes" if x == "Yes" else "No",
+        'has_softCap': lambda x: "Yes" if x == "Yes" else "No",
+        'has_hardCap': lambda x: "Yes" if x == "Yes" else "No",
+        'has_website': lambda x: "Yes" if x == "Yes" else "No",
+        'has_whitepaper': lambda x: "Yes" if x == "Yes" else "No",
+        'has_twitter': lambda x: "Yes" if x == "Yes" else "No",
+        'has_github': lambda x: "Yes" if x == "Yes" else "No",
+        'has_telegram': lambda x: "Yes" if x == "Yes" else "No"
+    }
+}
+
+# List template for ICO data (bullet-point format)
+template_ico_list = '\n'.join(['- ' + v + ': ${' + k + '}' for k, v in ico_feature_names])
+
+# Configuration for list template
+template_config_ico_list = template_config_ico
+
+
