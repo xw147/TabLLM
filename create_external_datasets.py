@@ -372,7 +372,7 @@ def load_train_validation_test(dataset_name, data_dir):
         # Convert riskLevel to binary: 1 = No Fraud (0), >1 = Fraud (1)
         dataset['label'] = (dataset['riskLevel'] > 1).astype(int)
         # Drop non-feature columns: target, IDs, and fraud-only descriptive variables
-        columns_to_drop = ['riskLevel', 'name_check', 'token_check', 'dc_Category', 'dc_EntryDate', 'dc_Summary']
+        columns_to_drop = ['riskLevel', 'name', 'token_symbol', 'dc_Category', 'dc_EntryDate', 'dc_Summary']
         dataset = dataset.drop(columns=columns_to_drop)
         dataset_train, dataset_valid, dataset_test = train_validation_test_split(dataset)
         assert len(dataset_train) + len(dataset_valid) + len(dataset_test) == original_size
