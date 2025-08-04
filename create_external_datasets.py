@@ -574,5 +574,5 @@ def parse_args():
 
 if __name__ == '__main__':
     import sys
-    sys.argv = ['create_external_datasets.py', '--dataset', 'ico', '--debug', '--list']
+    sys.argv = ['create_external_datasets.py', '--dataset', 'ico', '--list']
     main()
