@@ -11,7 +11,7 @@ import xgboost as xgboost
 from datasets import DatasetDict, concatenate_datasets, Dataset
 from sklearn.linear_model import LogisticRegression
 import lightgbm as lgb
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import roc_auc_score, average_precision_score
 from sklearn.model_selection import StratifiedKFold, GridSearchCV, KFold
 from sklearn.preprocessing import StandardScaler, OrdinalEncoder
 from tabpfn import TabPFNClassifier
@@ -56,7 +56,8 @@ def main():
     }
 
     # Hijack parameter for running all
-    args_datasets = ['car', 'income', 'heart', 'diabetes', 'blood', 'bank', 'jungle', 'creditg', 'calhousing']
+    # args_datasets = ['car', 'income', 'heart', 'diabetes', 'blood', 'bank', 'jungle', 'creditg', 'calhousing']
+    args_datasets = ['ico']
     all_results = pd.DataFrame([], index=args_datasets)
     all_results_sd = pd.DataFrame([], index=args_datasets)
     for args.dataset in args_datasets:
@@ -68,7 +69,8 @@ def main():
         assert(len(models)) == 1  # For current output only one model is supported
         # models = ['output_datasets']
         ts = datetime.datetime.now().strftime("-%Y%m%d-%H%M%S")
-        metric = 'roc_auc'  # accuracy
+        # metric = 'roc_auc'  # accuracy
+        metric = 'auprc' 
         num_shots = [4, 8, 16, 32, 64, 128, 256, 512, 'all']  # , 1024, 2048, 4096, 8192, 16384, 50000, 'all']  # ['all']
         seeds = [42, 1024, 0, 1, 32]   # , 45, 655, 186, 126, 836]
         seeded_results = defaultdict(list)
@@ -236,6 +238,12 @@ def evaluate_model(seed, model, metric, parameters, X_train, y_train, X_valid, y
         elif metric == 'roc_auc_ovr':
             p = clf_in.predict_proba(X)
             metric_score = roc_auc_score(y, p, multi_class='ovr', average='macro')
+        elif metric == 'auprc':
+            p = clf_in.predict_proba(X)[:, 1]
+            metric_score = average_precision_score(y, p)
+        elif metric == 'auprc_ovr':
+            p = clf_in.predict_proba(X)
+            metric_score = average_precision_score(y, p, average='macro')
         elif metric == 'accuracy':
             p = np.argmax(clf_in.predict_proba(X), axis=1)
             metric_score = np.sum(p == np.array(y)) / p.shape[0]

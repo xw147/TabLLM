@@ -339,7 +339,6 @@ class CustomCategoricalReader(BaseDatasetReader):
 
         return metrics
 
-
 def pr_auc_score(labels, probabilities):
     precision, recall, _ = precision_recall_curve(labels, probabilities)
     return auc(recall, precision)
