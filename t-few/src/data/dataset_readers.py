@@ -13,7 +13,7 @@ import csv
 from typing import Dict, List, Optional, Tuple
 import re
 import pandas as pd
-from sklearn.metrics import roc_auc_score, precision_recall_curve, auc, f1_score
+from sklearn.metrics import roc_auc_score, precision_recall_curve, auc, f1_score, precision_score, recall_score
 
 templates_for_custom_tasks = {
     'income': '50000_dollars',
@@ -25,6 +25,7 @@ templates_for_custom_tasks = {
     'blood': 'blood',
     'jungle': 'jungle',
     'calhousing': 'calhousing',
+    'ico': 'ico-fraud-classification',
 }
 
 
@@ -67,7 +68,12 @@ def get_dataset_reader(config):
     elif str(config.dataset).split('_' + str(config.num_shot))[0] in dataset_dict:
         dataset_class = dataset_dict[str(config.dataset).split('_' + str(config.num_shot))[0]]
     else:
-        dataset_class = CustomCategoricalReader
+        # Check if it's ICO dataset
+        task = config.dataset.split('_')[0].lower()
+        if task == 'ico':
+            dataset_class = ICOCategoricalReader  # Use ICO-specific reader
+        else:
+            dataset_class = CustomCategoricalReader  # Use default reader
 
     return dataset_class(config)
 
@@ -757,3 +763,41 @@ class RaftReader(object):
         matching = [a == b for a, b in zip(accumulated["prediction"], accumulated["label"])]
         accuracy = sum(matching) / len(matching)
         return {"accuracy": accuracy}
+
+
+class ICOCategoricalReader(CustomCategoricalReader):
+    """Custom reader for ICO dataset with F1, Precision, Recall metrics"""
+    
+    def compute_metric(self, accumulated):
+        # Get base metrics (accuracy)
+        metrics = BaseDatasetReader.compute_metric(self, accumulated)
+        
+        # ICO-specific metrics: F1, Precision, Recall
+        binary = all([True if l in [0, 1] else False for l in accumulated['label']])
+        
+        if binary:
+            # Binary classification metrics
+            precision = precision_score(accumulated['label'], accumulated['prediction'], average='binary')
+            recall = recall_score(accumulated['label'], accumulated['prediction'], average='binary')
+            f1_binary = f1_score(accumulated['label'], accumulated['prediction'], average='binary')
+            
+            metrics.update({
+                'f1': f1_binary,
+                'precision': precision, 
+                'recall': recall,
+                'num': len(accumulated['prediction'])
+            })
+        else:
+            # Multi-class metrics (fallback)
+            precision_macro = precision_score(accumulated['label'], accumulated['prediction'], average='macro')
+            recall_macro = recall_score(accumulated['label'], accumulated['prediction'], average='macro')
+            f1_macro = f1_score(accumulated['label'], accumulated['prediction'], average='macro')
+            
+            metrics.update({
+                'f1': f1_macro,
+                'precision': precision_macro,
+                'recall': recall_macro,
+                'num': len(accumulated['prediction'])
+            })
+        
+        return metrics

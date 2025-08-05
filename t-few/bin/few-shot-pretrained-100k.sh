@@ -22,7 +22,8 @@ do
   do
     # Datasets: car, income, heart, diabetes, jungle, bank, blood, calhousing, creditg, jungle
     # Run all serializations for car
-    for dataset in car car_list car_list_permuted car_list_shuffled car_list_values car_gpt car_t0 car_ttt
+    # for dataset in car car_list car_list_permuted car_list_shuffled car_list_values car_gpt car_t0 car_ttt ico
+    for dataset in ico
     do
       # Zero-shot
       # eval_before_training=True

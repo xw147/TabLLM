@@ -698,7 +698,7 @@ template_config_ico = {
         'tokensForSale_combined': lambda x: f"{int(x):,}" if pd.notna(x) and x > 0 else "unknown",
         'soldTokens_combined': lambda x: f"{int(x):,}" if pd.notna(x) and x > 0 else "unknown",
         'distributedInICO_combined': lambda x: f"{x:.2f}" if pd.notna(x) else "unknown",
-        'raised_USD': lambda x: f"${int(float(x)):,}" if pd.notna(x) and str(x) != 'nan' and str(x).strip() != '' else "unknown",
+        'raised_USD': lambda x: f"${int(float(str(x).replace(',', ''))):,}" if pd.notna(x) and str(x) != 'nan' and str(x).strip() != '' else "unknown",
         'ERC20_combined': lambda x: "Yes" if x == "Yes" else "No",
         'is_Ethereum_based': lambda x: "Yes" if x == "Yes" else "No",
         'whitelist': lambda x: "Yes" if x == "Yes" else "No",

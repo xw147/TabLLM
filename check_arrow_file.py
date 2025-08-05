@@ -1,7 +1,7 @@
 from datasets import load_from_disk
 
 # Load the entire dataset
-dataset = load_from_disk('path/to/your/dataset_folder')
+dataset = load_from_disk('C:/work/TabLLM/datasets_serialized/ico/ico_list/data.arrow')
 print(dataset)
 
 # View first few examples
