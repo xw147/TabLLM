@@ -42,7 +42,8 @@ cat_idx_dict = {
     "bank": [1,2,3,4,6,7,8,10,15],
     "jungle": [],
     "calhousing": [],
-    "ico": [0,4,5,6,8,9,10,17,18,19,20,21,22],  # categorical features for ICO
+    # Updated categorical features for ICO (0-indexed after dropping 6 columns)
+    "ico": [0,4,5,6,8,9,10,14,15,16,17,18,19,20,21],  # categorical features for ICO
 }
 bin_num = 10
 
@@ -230,9 +231,26 @@ def main():
 def load_train_validation_test(dataset_name, data_dir):
     # Load existing data, put into train, validation, test and create label
     def train_validation_test_split(data):
-        # Don't want to shuffle bc done later with right seed to make it identical with external evaluation
-        data_train, data_test = train_test_split(data, test_size=0.20, shuffle=False)
-        data_valid, data_test = train_test_split(data_test, test_size=0.50, shuffle=False)
+        # Use stratified splitting to maintain class distribution across splits
+        
+        # First split: 80% train, 20% temp (which will become validation + test)
+        data_train, data_temp = train_test_split(
+            data, 
+            test_size=0.20, 
+            shuffle=True,  # Changed to True for better randomization
+            stratify=data['label'],  # Maintain class distribution
+            random_state=42  # For reproducibility
+        )
+        
+        # Second split: Split the 20% into 10% validation, 10% test
+        data_valid, data_test = train_test_split(
+            data_temp, 
+            test_size=0.50,  # 50% of 20% = 10% of total
+            shuffle=True,
+            stratify=data_temp['label'],  # Maintain class distribution
+            random_state=42
+        )
+        
         return data_train, data_valid, data_test
 
     def byte_to_string_columns(data):
@@ -369,7 +387,7 @@ def load_train_validation_test(dataset_name, data_dir):
         # Load ICO fraud dataset
         dataset = pd.read_csv(data_dir / 'common_features.csv')
         original_size = len(dataset)
-        # Convert riskLevel to binary: 1 = No Fraud (0), >1 = Fraud (1)
+        # Convert riskLevel to binary: 0 or 1 = No Fraud (0), >1 = Fraud (1)
         dataset['label'] = (dataset['riskLevel'] > 1).astype(int)
         # Drop non-feature columns: target, IDs, and fraud-only descriptive variables
         columns_to_drop = ['riskLevel', 'name', 'token_symbol', 'dc_Category', 'dc_EntryDate', 'dc_Summary']
@@ -392,7 +410,7 @@ def load_train_validation_test(dataset_name, data_dir):
         'jungle': 7,
         'wine': 12,
         'calhousing': 9,
-        'ico': 24  # 23 features + 1 label (excluding riskLevel, name_check, token_check, dc_Category, dc_EntryDate, dc_Summary)
+        'ico': 22  # 22 features + 1 label (excluding riskLevel, name_check, token_check, dc_Category, dc_EntryDate, dc_Summary)
     }
     assert dataset_name in dataset_specs.keys() and len(dataset.columns) == dataset_specs[dataset_name]
 

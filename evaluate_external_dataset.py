@@ -1,7 +1,8 @@
 import argparse
-import datetime
+from datetime import datetime
 import logging
 import pickle
+import json
 from collections import Counter, defaultdict
 from pathlib import Path
 import datasets
@@ -16,7 +17,9 @@ from sklearn.model_selection import StratifiedKFold, GridSearchCV, KFold
 from sklearn.preprocessing import StandardScaler, OrdinalEncoder
 from tabpfn import TabPFNClassifier
 
+
 from create_external_datasets import load_train_validation_test
+from sklearn.metrics import precision_recall_fscore_support, average_precision_score
 
 datasets.enable_caching()
 logger = logging.getLogger(__name__)
@@ -39,14 +42,19 @@ def main():
             'learning_rate': [0.01, 0.03, 0.1, 0.3],
         },
         'xgboost': {
-            'max_depth': [2, 4, 6, 8, 10, 12],
-            'alpha': [1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1.],
-            'lambda': [1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1.],
-            'eta': [0.01, 0.03, 0.1, 0.3],
+            # 'max_depth': [2, 4, 6, 8, 10, 12],
+            # 'alpha': [1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1.],
+            # 'lambda': [1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1.],
+            # 'eta': [0.01, 0.03, 0.1, 0.3],
+
+            'max_depth': [2, 3, 4, 5],
+            'eta': [0.01, 0.1, 0.3], # learning rate
+            'alpha': [0.1, 1.0, 10.0],      # L1 regularization
+            'lambda': [0.1, 1.0, 10.0],   # L2 regularization
         },
         'tabpfn': {
-            'device': ['cpu'],
-            'N_ensemble_configurations': [32]
+            'device': ['cuda'],
+            'n_estimators': [32]
         },
         'gpt3': {
           # Dummy model entry, for zero-shot predictions from gpt3
@@ -60,18 +68,19 @@ def main():
     args_datasets = ['ico']
     all_results = pd.DataFrame([], index=args_datasets)
     all_results_sd = pd.DataFrame([], index=args_datasets)
+    all_metrics_per_shot = {}
     for args.dataset in args_datasets:
         # Configuration
-        data_dir = Path("/root/TabLLM/datasets")
+        data_dir = Path("/work/TabLLM/datasets")
         data_dir = data_dir / args.dataset
 
-        models = ['lr']
+        models = ['tabpfn']
         assert(len(models)) == 1  # For current output only one model is supported
         # models = ['output_datasets']
-        ts = datetime.datetime.now().strftime("-%Y%m%d-%H%M%S")
+        ts = datetime.now().strftime("-%Y%m%d-%H%M%S")
         # metric = 'roc_auc'  # accuracy
-        metric = 'auprc' 
-        num_shots = [4, 8, 16, 32, 64, 128, 256, 512, 'all']  # , 1024, 2048, 4096, 8192, 16384, 50000, 'all']  # ['all']
+        metric = 'average_precision' # 'auprc', used for hyperparameter tuning
+        num_shots = [4, 8, 16, 32, 64, 128, 'all'] #, 256, 512, 1024, 2048, 4096, 8192, 16384, 50000, 'all']  # ['all']
         seeds = [42, 1024, 0, 1, 32]   # , 45, 655, 186, 126, 836]
         seeded_results = defaultdict(list)
         if metric == 'roc_auc' and args.dataset == 'car':
@@ -79,8 +88,9 @@ def main():
             # https://scikit-learn.org/stable/modules/generated/sklearn.metrics.roc_auc_score.html
             metric = 'roc_auc_ovr'
         for model in models:
+            all_metrics_per_shot = {}  # Initialize for each model
             # Set ordinal encoding based on model name
-            categorical_encoding = 'one-hot'
+            categorical_encoding = 'ordinal' # 'one-hot'
             if model.endswith(' ordinal'):
                 model = model.split(' ordinal', maxsplit=1)[0]
                 categorical_encoding = 'ordinal'
@@ -113,13 +123,17 @@ def main():
                 dataset_test = dataset['test'].remove_columns(['idx'])
 
                 for num_shot in num_shots:
+                    if num_shot not in all_metrics_per_shot:
+                        all_metrics_per_shot[num_shot] = []  # Initialize list for each shot size
+                    # Store the original num_shot for metrics tracking
+                    original_num_shot = num_shot
                     if num_shot == 'all' and model == 'tabpfn':
                         num_shot = 1024  # This is the expected maximum input size of tabpfn
                     if num_shot == 'all':
-                        # Just shuffle dataset
+                        # Just shuffle dataset and flatten indices for better performance
                         dataset_train = (dataset['train'].remove_columns(['idx'])).shuffle(seed)
-                        dataset_validation = dataset_validation.shuffle(seed)
-                        dataset_test = dataset_test.shuffle(seed)
+                        dataset_validation = dataset_validation.shuffle(seed).flatten_indices()
+                        dataset_test = dataset_test.shuffle(seed).flatten_indices()
                         X_unlab = np.array([])
                     else:
                         # 3. Sample few shot examples as in tfew
@@ -170,9 +184,16 @@ def main():
                     y_test = np.concatenate([y_valid, y_test], axis=0).astype(int)
                     X_valid = np.array([])
                     y_valid = np.array([])
+
+                    # Replace the existing evaluation section:
                     if model != 'gpt3':
-                        results = evaluate_model(seed, model, metric, parameters[model], X_train, y_train, X_valid, y_valid, X_test, y_test)
+                        primary_metric, all_metrics = evaluate_model(seed, model, metric, parameters[model], 
+                                                                    X_train, y_train, X_valid, y_valid, X_test, y_test)
+                        # Store all metrics for this shot/seed combination
+                        all_metrics_per_shot[original_num_shot].append(all_metrics)
+                        results = primary_metric  # For backward compatibility
                     else:
+                        # Handle GPT-3 case as before
                         if metric == 'roc_auc':
                             results = roc_auc_score(y_test, X_test[:, gpt_3_label_idx])
                         elif metric == 'roc_auc_ovr':
@@ -180,21 +201,29 @@ def main():
 
                     seeded_results[num_shot] = seeded_results[num_shot] + [results]
 
-                    # Debug: Intermediate output
-                    # print(f"Shots temp results {num_shot}: {result_str(seeded_results[num_shot])} ({seeded_results[num_shot]})")
-
-            # Output per dataset
-            # for k, v in seeded_results.items():
-            #     print(f"Shots {k}: {result_str(v)}")
-            # Give as (shot, results, sd)
-            # for k, v in seeded_results.items():
-            #     print(f"({result_str(v).replace(' (', ', ')}, ", end='')
+            # Save results after all experiments for this model are completed
+            if model != 'gpt3' and model != 'output_datasets':
+                model_params = parameters[model] if model in parameters else {}
+                dataset_info = {
+                    "dataset_name": args.dataset,
+                    "n_features": X_train.shape[1] if 'X_train' in locals() else None,
+                    "classification_type": "binary"
+                }
+                
+                save_model_results(
+                    model_name=model,
+                    all_metrics_per_shot=all_metrics_per_shot,
+                    model_params=model_params,
+                    dataset_info=dataset_info,
+                    output_file=f"{args.dataset}_{model}_results.json"
+                )
 
             # Collect outputs per dataset
             for k, v in seeded_results.items():
                 all_results.loc[args.dataset, str(k)] = round(float(np.mean(v)), 2)
                 all_results_sd.loc[args.dataset, str(k)] = round(float(np.std(v)), 2)
 
+    
     # Print the collective results for one model
     print(f"\nRow-wise results for shots: {list(all_results.columns)}.")
     for i, row in all_results.iterrows():
@@ -225,34 +254,50 @@ def evaluate_model(seed, model, metric, parameters, X_train, y_train, X_valid, y
     def get_xgboost():
         # No class_weight parameter, only scale_pos_weight, but should not be a difference for all shot experiments.
         # eval_metric gives same as non, but without a warning
-        return xgboost.XGBClassifier(use_label_encoder=False, eval_metric='logloss', nthread=1, random_state=seed)
+        return xgboost.XGBClassifier(eval_metric='logloss', nthread=1, random_state=seed)
 
     def get_tabpfn():
         # Use default configuration
         return TabPFNClassifier()
 
     def compute_metric(clf_in, X, y):
-        if metric == 'roc_auc':
-            p = clf_in.predict_proba(X)[:, 1]
-            metric_score = roc_auc_score(y, p)
-        elif metric == 'roc_auc_ovr':
-            p = clf_in.predict_proba(X)
-            metric_score = roc_auc_score(y, p, multi_class='ovr', average='macro')
-        elif metric == 'auprc':
-            p = clf_in.predict_proba(X)[:, 1]
-            metric_score = average_precision_score(y, p)
-        elif metric == 'auprc_ovr':
-            p = clf_in.predict_proba(X)
-            metric_score = average_precision_score(y, p, average='macro')
-        elif metric == 'accuracy':
-            p = np.argmax(clf_in.predict_proba(X), axis=1)
-            metric_score = np.sum(p == np.array(y)) / p.shape[0]
+        
+        
+        # Get predictions and probabilities for binary classification
+        y_pred = clf_in.predict(X)
+        y_proba = clf_in.predict_proba(X)[:, 1]  # Probability of positive class
+        
+        # Calculate precision, recall, f1 for binary classification
+        precision, recall, f1, _ = precision_recall_fscore_support(y, y_pred, average='binary', zero_division=0)
+        auprc = average_precision_score(y, y_proba)
+        
+        all_metrics = {
+            'precision': precision,
+            'recall': recall,
+            'f1_score': f1,
+            'auprc': auprc
+        }
+        
+        # Return specific metric for compatibility with existing code
+        if metric == 'precision':
+            return all_metrics['precision']
+        elif metric == 'recall':
+            return all_metrics['recall']
+        elif metric == 'f1_score':
+            return all_metrics['f1_score']
+        elif metric == 'average_precision':
+            return all_metrics['auprc']
         else:
-            raise ValueError("Undefined metric.")
-        return metric_score
+            # For other metrics, keep existing behavior
+            if metric == 'roc_auc':
+                return roc_auc_score(y, y_proba)
+            elif metric == 'accuracy':
+                return np.sum(y_pred == np.array(y)) / len(y)
+            else:
+                raise ValueError("Undefined metric.")
 
     # Do a 4-fold cross validation on the training set for parameter tuning
-    folds = min(Counter(y_train).values()) if min(Counter(y_train).values()) < 4 else 4  # If less than 4 examples
+    folds = min(Counter(y_train).values()) if min(Counter(y_train).values()) < 4 else 4 # If less than 4 examples
     if folds < 4:
         print(f"Manually reduced folds to {folds} since this is maximum number of labeled examples.")
 
@@ -272,31 +317,33 @@ def evaluate_model(seed, model, metric, parameters, X_train, y_train, X_valid, y
     elif model == 'tabpfn':
         estimator = get_tabpfn()
     # Add verbose 4 for more detailed output
-    clf = GridSearchCV(estimator=estimator, param_grid=parameters, cv=inner_cv, scoring=metric, n_jobs=40, verbose=0)
+
+    clf = GridSearchCV(estimator=estimator, param_grid=parameters, cv=inner_cv, 
+                   scoring=metric, n_jobs=40, verbose=0)
     clf.fit(X_train, y_train)
 
-    # In depth debug linear model to determine support of each patient
-    # if model == 'lr':
-    #     print(len(list(est.coef_[0])))
-    #     print(sum([(x != 0) for x in list(est.coef_[0])]))
-    #     print(clf.best_params_)
-    #     est = clf.best_estimator_
-    #     print('Coefficients:', len(list(est.coef_[0])), 'non-zero:', sum([(x != 0) for x in list(est.coef_[0])]))
-    #     print('Coefficients wout static:', len(list(est.coef_[0])) - 9, '/3 = ', (len(list(est.coef_[0])) - 9) / 3)
-    #     # Determine non-zero weights in test set
-    #     weights_per_person = X_test.toarray() * est.coef_[0]
-    #     # Remove nine trailing static features
-    #     weights_per_person = weights_per_person[:, :-9]
-    #     non_zero = np.count_nonzero(weights_per_person, axis=1)
-    #     print('Windowed', np.median(non_zero), np.quantile(non_zero, 0.25), np.quantile(non_zero, 0.75), np.max(non_zero))
-    #     # Non zero for concept, so summed up windows
-    #     weights_per_person = weights_per_person.reshape((weights_per_person.shape[0], 3, int(weights_per_person.shape[1]/3)))
-    #     weights_per_person = np.sum(weights_per_person, axis=1)
-    #     non_zero = np.count_nonzero(weights_per_person, axis=1)
-    #     print('Not windowed', np.median(non_zero), np.quantile(non_zero, 0.25), np.quantile(non_zero, 0.75), np.max(non_zero))
-
-    score_test = compute_metric(clf, X_test, y_test)
-    return score_test
+    # Calculate all metrics for binary classification
+    y_pred = clf.predict(X_test)
+    y_proba = clf.predict_proba(X_test)[:, 1]  # Probability of positive class
+    
+    # Calculate all metrics
+    precision, recall, f1, _ = precision_recall_fscore_support(y_test, y_pred, average='binary', zero_division=0)
+    auprc = average_precision_score(y_test, y_proba)
+    
+    all_metrics = {
+        'precision': precision,
+        'recall': recall,
+        'f1_score': f1,
+        'auprc': auprc
+    }
+    
+    # Return the specific metric being evaluated plus all metrics
+    if metric in all_metrics:
+        return all_metrics[metric], all_metrics
+    else:
+        # For backward compatibility with other metrics
+        score_test = compute_metric(clf, X_test, y_test)
+        return score_test, all_metrics
 
     #     one_hot_test = pd.get_dummies(dataset['test'][[c for c in list(dataset['test']) if c != 'label']])[columns]
     #     pred = np.argmax(lr.predict_proba(one_hot_test), axis=1)
@@ -360,10 +407,17 @@ def prepare_data(dataset_name, model_name, dataset, enc=None, scale=True):
             # z-normalization of numerical columns
             data[numeric_columns] = scaler.transform(data[numeric_columns])
 
-        # Add all columns that are in test but not here
-        for column in [c for c in dataset['train'].columns if c not in data.columns]:
-            data[column] = 0.
-        # Put columns in same order as test and remove everything that is not in test
+        # Find missing columns
+        missing_columns = [c for c in dataset['train'].columns if c not in data.columns]
+        
+        # Add all missing columns at once using pd.concat instead of one by one
+        if missing_columns:
+            # Create DataFrame with missing columns filled with 0
+            missing_data = pd.DataFrame(0, index=data.index, columns=missing_columns)
+            # Concatenate all at once
+            data = pd.concat([data, missing_data], axis=1)
+        
+        # Put columns in same order as train dataset
         return data[dataset['train'].columns]
 
     dataset['validation'] = create_valid_test('validation')
@@ -472,6 +526,70 @@ def parse_args():
 
     return args
 
+
+
+
+def save_model_results(model_name, all_metrics_per_shot, model_params=None, 
+                      dataset_info=None, output_file=None):
+    """
+    Save ML model results to JSON file for binary classification
+    
+    Args:
+        model_name: Name of the ML model
+        all_metrics_per_shot: Dictionary with shot sizes as keys and list of metric dictionaries as values
+                             e.g., {2: [{'precision': 0.8, 'recall': 0.7, ...}, ...], 4: [...], ...}
+        model_params: Dictionary of model hyperparameters
+        dataset_info: Dictionary with dataset information
+        output_file: Path to save JSON file
+    """
+    
+    # Process metrics for each shot size
+    processed_results = {}
+    metric_names = ['precision', 'recall', 'f1_score', 'auprc']
+    
+    for shot_size, metrics_list in all_metrics_per_shot.items():
+        processed_results[str(shot_size)] = {}
+        
+        # Calculate mean and std for each metric
+        for metric_name in metric_names:
+            values = [m[metric_name] for m in metrics_list]
+            processed_results[str(shot_size)][metric_name] = {
+                "mean": float(np.mean(values)),
+                "std": float(np.std(values)),
+                "raw_values": [float(v) for v in values],
+                "count": len(values)
+            }
+    
+    # Create results structure
+    results = {
+        "model_info": {
+            "model_name": model_name,
+            "model_type": "binary_classification",
+            "hyperparameters": model_params or {},
+            "training_time": datetime.now().isoformat()
+        },
+        "experimental_setup": dataset_info or {},
+        "results_by_shot_size": processed_results,
+        "summary_statistics": {
+            "metric_names": metric_names,
+            "shot_sizes": list(all_metrics_per_shot.keys()),
+            "seeds_per_shot": len(list(all_metrics_per_shot.values())[0]) if all_metrics_per_shot else 0
+        },
+        "metadata": {
+            "created_date": datetime.now().strftime("%Y-%m-%d"),
+            "experiment_id": f"exp_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        }
+    }
+    
+    # Save to file
+    if output_file is None:
+        output_file = f"{model_name.lower().replace(' ', '_')}_results.json"
+    
+    with open(output_file, 'w') as f:
+        json.dump(results, f, indent=2)
+    
+    print(f"Results saved to {output_file}")
+    return results
 
 if __name__ == '__main__':
     main()

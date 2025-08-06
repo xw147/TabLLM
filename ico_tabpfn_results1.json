@@ -1,0 +1,72 @@
+{
+  "model_info": {
+    "model_name": "tabpfn",
+    "model_type": "binary_classification",
+    "hyperparameters": {
+      "device": [
+        "cuda"
+      ],
+      "n_estimators": [
+        32
+      ]
+    },
+    "training_time": "2025-08-06T16:01:58.291164"
+  },
+  "experimental_setup": {
+    "dataset_name": "ico",
+    "n_features": 21,
+    "classification_type": "binary"
+  },
+  "results_by_shot_size": {
+    "all": {
+      "precision": {
+        "mean": 0.5,
+        "std": 0.0,
+        "raw_values": [
+          0.5
+        ],
+        "count": 1
+      },
+      "recall": {
+        "mean": 0.04,
+        "std": 0.0,
+        "raw_values": [
+          0.04
+        ],
+        "count": 1
+      },
+      "f1_score": {
+        "mean": 0.07407407407407407,
+        "std": 0.0,
+        "raw_values": [
+          0.07407407407407407
+        ],
+        "count": 1
+      },
+      "auprc": {
+        "mean": 0.11265081677600636,
+        "std": 0.0,
+        "raw_values": [
+          0.11265081677600636
+        ],
+        "count": 1
+      }
+    }
+  },
+  "summary_statistics": {
+    "metric_names": [
+      "precision",
+      "recall",
+      "f1_score",
+      "auprc"
+    ],
+    "shot_sizes": [
+      "all"
+    ],
+    "seeds_per_shot": 1
+  },
+  "metadata": {
+    "created_date": "2025-08-06",
+    "experiment_id": "exp_20250806_160158"
+  }
+}
