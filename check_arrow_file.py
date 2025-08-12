@@ -1,12 +1,18 @@
 from datasets import load_from_disk
 
-# Load the entire dataset
-dataset = load_from_disk('C:/work/TabLLM/datasets_serialized/ico/ico_list/data.arrow')
+# Load the dataset
+dataset = load_from_disk('datasets_serialized/ico')
+
+# Check dataset info
+print("Dataset info:")
 print(dataset)
+print(f"Number of examples: {len(dataset)}")
+print(f"Features: {dataset.features}")
 
 # View first few examples
-print(dataset[:5])
-
-# Convert to pandas for easier viewing
-df = dataset.to_pandas()
-print(df.head())
+print("\nFirst 3 examples:")
+for i in range(3):
+    print(f"Example {i}:")
+    print(f"  note: {dataset[i]['note'][:200]}...")  # First 200 chars
+    print(f"  label: {dataset[i]['label']}")
+    print("-" * 50)

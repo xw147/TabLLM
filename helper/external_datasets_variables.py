@@ -662,29 +662,29 @@ template_config_wine_list_shuffled = template_config_wine_list
 
 # Only include actual features for training (exclude target, IDs, and fraud-only descriptive variables)
 ico_feature_names = [
-    ('country_combined', 'country'),
+    ('country_combined', 'headquarter country'),
     ('ICODuration_combined', 'ICO duration'),
     ('preICODuration_combined', 'pre-ICO duration'),
     ('rating_combined', 'rating'),
-    ('ERC20_combined', 'ERC20 token'),
-    ('is_Ethereum_based', 'Ethereum based'),
+    ('ERC20_combined', 'ERC20 compliance'),
+    ('is_Ethereum_based', 'ethereum-based status'),
     ('token_type', 'token type'),
     ('price_USD', 'token price'),
-    ('whitelist', 'has whitelist'),
-    ('kyc', 'KYC required'),
+    ('whitelist', 'whitelist process'),
+    ('kyc', 'kYC process'),
     ('bounty', 'bounty program'),
     ('teamSize_combined', 'team size'),
     ('tokensForSale_combined', 'tokens for sale'),
-    ('soldTokens_combined', 'sold tokens'),
-    ('distributedInICO_combined', 'token distribution % to investor'),
-    ('has_softCap', 'has soft cap'),
-    ('has_hardCap', 'has hard cap'),
-    ('raised_USD', 'amount raised'),
-    ('has_website', 'website'),
-    ('has_whitepaper', 'whitepaper'),
-    ('has_twitter', 'Twitter'),
-    ('has_github', 'GitHub'),
-    ('has_telegram', 'Telegram')
+    # ('soldTokens_combined', 'tokens sold'),
+    ('distributedInICO_combined', 'investor token allocation %'),
+    ('has_softCap', 'soft cap'),
+    ('has_hardCap', 'hard cap'),
+    # ('raised_USD', 'amount raised'),
+    ('has_website', 'website availability'),
+    ('has_whitepaper', 'whitepaper availability'),
+    ('has_twitter', 'Twitter presence'),
+    ('has_github', 'GitHub presence'),
+    ('has_telegram', 'Telegram presence')
 ]
 
 # Basic preprocessing configuration for ICO data
@@ -714,6 +714,8 @@ template_config_ico = {
     }
 }
 
+# text template for ICO data
+template_ico = ' '.join(['The ' + v + ' is ${' + k + '}.' for k, v in ico_feature_names])
 # List template for ICO data (bullet-point format)
 template_ico_list = '\n'.join(['- ' + v + ': ${' + k + '}' for k, v in ico_feature_names])
 

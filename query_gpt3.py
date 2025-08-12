@@ -14,7 +14,9 @@ from promptsource.templates import DatasetTemplates, Template
 import requests
 import time
 import pandas as pd
+from dotenv import load_dotenv
 
+load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 configs = {
@@ -27,8 +29,9 @@ configs = {
     'creditg': {'prompts': [StringTemplate('${note}')]},
     'calhousing': {'prompts': [StringTemplate('${note}')]},
     'jungle': {'prompts': [StringTemplate('${note}')]},
+    'ico': {'prompts': [StringTemplate('${note}')]},
 }
-public_tasks = ['income', 'car', 'heart', 'diabetes', 'blood', 'bank', 'creditg', 'calhousing', 'jungle']
+public_tasks = ['income', 'car', 'heart', 'diabetes', 'blood', 'bank', 'creditg', 'calhousing', 'jungle', 'ico']
 
 
 def parse_args():
@@ -56,13 +59,23 @@ def post_request(example, model, yes_no_probability=False):
     print(text.replace('\\n', '\n'))
 
     if model == 'gpt3':
-        url = "https://api.openai.com/v1/engines/text-davinci-002/completions"
+        # Updated to use modern OpenAI API
+        url = "https://api.openai.com/v1/completions"
         headers = {"Content-Type": "application/json", "Authorization": "Bearer " + OPENAI_API_KEY}
-        data = '{"prompt": "' + text + '", "temperature": 0, "max_tokens": 1, "logprobs": 50}'
-        response_json = requests.post(url, headers=headers, data=data.encode('utf-8')).json()
+        
+        # Use gpt-3.5-turbo-instruct (closest to the old davinci models for completions)
+        data = {
+            "model": "gpt-3.5-turbo-instruct",
+            "prompt": text,
+            "temperature": 0,
+            "max_tokens": 1,
+            "logprobs": 5  # Note: max logprobs is now 5, not 50
+        }
+        
+        response_json = requests.post(url, headers=headers, json=data).json()
 
         if 'error' in response_json:
-            if not response_json['error']['message'].startswith("Rate limit reached"):  # Ignore rate limit error.
+            if not response_json['error']['message'].startswith("Rate limit reached"):
                 raise Exception('ERROR: ' + response_json['error']['message'] + ' ' + text)
 
         if yes_no_probability:
@@ -73,15 +86,6 @@ def post_request(example, model, yes_no_probability=False):
             if yes_prob == 0 and no_prob == 0:
                 return 0.5
             return yes_prob / (yes_prob + no_prob)
-
-            # For car dataset: Unacceptable ||| Acceptable ||| Good ||| Very good'
-            # logprobs = response_json["choices"][0]["logprobs"]["top_logprobs"][0]
-            # unacceptable_prob = 0 if ' ' not in logprobs.keys() else math.exp(logprobs[' Un'])
-            # acceptable_prob = 0 if ' ' not in logprobs.keys() else math.exp(logprobs[' Accept'])
-            # good_prob = 0 if ' ' not in logprobs.keys() else math.exp(logprobs[' Good'])
-            # verygood_prob = 0 if ' ' not in logprobs.keys() else math.exp(logprobs[' Very'])
-            # print(f"Car probs {unacceptable_prob}, {acceptable_prob}, {good_prob}, {verygood_prob}.")
-            # return f"{unacceptable_prob}, {acceptable_prob}, {good_prob}, {verygood_prob}"
 
         output = response_json["choices"][0]["text"]
 
@@ -129,7 +133,7 @@ def read_dataset(task, input_file):
         # input_list = [{'note': x['note'], 'label': x['label']} for x in orig_data]
 
         # Load template
-        yaml_dict = yaml.load(open('/root/TabLLM/templates/templates_' + task + '.yaml', "r"), Loader=yaml.FullLoader)
+        yaml_dict = yaml.load(open('/work/TabLLM/templates/templates_' + task + '.yaml', "r"), Loader=yaml.FullLoader)
         prompts = yaml_dict['templates']
         # Return a list of prompts (usually only a single one with dataset_stash[1] name)
         templates_for_custom_tasks = {
@@ -142,6 +146,7 @@ def read_dataset(task, input_file):
             'blood': 'blood',
             'jungle': 'jungle',
             'calhousing': 'calhousing',
+            'ico': 'ico-fraud-classification',
         }
         temp = [t for k, t in prompts.items() if t.get_name() == templates_for_custom_tasks[task]][0]
         input_list = [{'note': temp.apply(x)[0], 'answer': temp.apply(x)[1], 'label': x['label']} for x in orig_data]

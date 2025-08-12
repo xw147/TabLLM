@@ -592,5 +592,8 @@ def parse_args():
 
 if __name__ == '__main__':
     import sys
-    sys.argv = ['create_external_datasets.py', '--dataset', 'ico', '--list']
+    # list template
+    # sys.argv = ['create_external_datasets.py', '--dataset', 'ico', '--list']
+    # text template
+    sys.argv = ['create_external_datasets.py', '--dataset', 'ico']
     main()

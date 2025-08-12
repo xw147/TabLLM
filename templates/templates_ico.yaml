@@ -14,5 +14,5 @@ templates:
       {{ answer_choices[label] }}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
-      metrics: ['f1', 'precision', 'recall']
+      metrics: ['auprc','f1', 'precision', 'recall']
       original_task: true
