@@ -4,11 +4,11 @@ templates:
     name: ico_fraud_detection
     id: ico-fraud-classification-001
     reference: 'ICO Fraud Classification using TabLLM'
-    answer_choices: 'No Fraud ||| Fraud'
+    answer_choices: 'Fraud ||| No Fraud'
     jinja: '{{note}}
       
       
-      Based on the ICO project information above, is this project fraudulent? Answer Fraud or No Fraud.
+      Based on the information above, is this ICO project fraudulent? Answer: Fraud or No Fraud. 
       Answer: 
       |||
       {{ answer_choices[label] }}'

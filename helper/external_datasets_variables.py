@@ -675,11 +675,9 @@ ico_feature_names = [
     ('bounty', 'bounty program'),
     ('teamSize_combined', 'team size'),
     ('tokensForSale_combined', 'tokens for sale'),
-    # ('soldTokens_combined', 'tokens sold'),
     ('distributedInICO_combined', 'investor token allocation %'),
     ('has_softCap', 'soft cap'),
     ('has_hardCap', 'hard cap'),
-    # ('raised_USD', 'amount raised'),
     ('has_website', 'website availability'),
     ('has_whitepaper', 'whitepaper availability'),
     ('has_twitter', 'Twitter presence'),
@@ -690,27 +688,14 @@ ico_feature_names = [
 # Basic preprocessing configuration for ICO data
 template_config_ico = {
     'pre': {
-        'ICODuration_combined': lambda x: f"{int(x)} days" if pd.notna(x) and x > 0 else "unknown",
-        'preICODuration_combined': lambda x: f"{int(x)} days" if pd.notna(x) and x > 0 else "unknown",
-        'rating_combined': lambda x: f"{x:.2f}" if pd.notna(x) else "unknown",
-        'price_USD': lambda x: f"${x:.4f}" if pd.notna(x) and x > 0 else "unknown",
-        'teamSize_combined': lambda x: f"{int(x)} members" if pd.notna(x) and x > 0 else "unknown",
-        'tokensForSale_combined': lambda x: f"{int(x):,}" if pd.notna(x) and x > 0 else "unknown",
-        'soldTokens_combined': lambda x: f"{int(x):,}" if pd.notna(x) and x > 0 else "unknown",
-        'distributedInICO_combined': lambda x: f"{x:.2f}" if pd.notna(x) else "unknown",
-        'raised_USD': lambda x: f"${int(float(str(x).replace(',', ''))):,}" if pd.notna(x) and str(x) != 'nan' and str(x).strip() != '' else "unknown",
-        'ERC20_combined': lambda x: "Yes" if x == "Yes" else "No",
-        'is_Ethereum_based': lambda x: "Yes" if x == "Yes" else "No",
-        'whitelist': lambda x: "Yes" if x == "Yes" else "No",
-        'kyc': lambda x: "Yes" if x == "Yes" else "No",
-        'bounty': lambda x: "Yes" if x == "Yes" else "No",
-        'has_softCap': lambda x: "Yes" if x == "Yes" else "No",
-        'has_hardCap': lambda x: "Yes" if x == "Yes" else "No",
-        'has_website': lambda x: "Yes" if x == "Yes" else "No",
-        'has_whitepaper': lambda x: "Yes" if x == "Yes" else "No",
-        'has_twitter': lambda x: "Yes" if x == "Yes" else "No",
-        'has_github': lambda x: "Yes" if x == "Yes" else "No",
-        'has_telegram': lambda x: "Yes" if x == "Yes" else "No"
+        'country_combined': lambda x: x if pd.notna(x) else "not disclosed",
+        'ICODuration_combined': lambda x: f"{int(x)} days" if pd.notna(x) and x > 0 else "not disclosed",
+        'preICODuration_combined': lambda x: f"{int(x)} days" if pd.notna(x) and x > 0 else "not disclosed",
+        'rating_combined': lambda x: f"{x:.2f}" if pd.notna(x) else "not disclosed",
+        'price_USD': lambda x: f"${x:.4f}" if pd.notna(x) and x > 0 else "not disclosed",
+        'teamSize_combined': lambda x: f"{int(x)} members" if pd.notna(x) and x > 0 else "not disclosed",
+        'tokensForSale_combined': lambda x: f"{int(x):,}" if pd.notna(x) and x > 0 else "not disclosed",
+        'distributedInICO_combined': lambda x: f"{x:.2f}" if pd.notna(x) else "not disclosed"
     }
 }
 

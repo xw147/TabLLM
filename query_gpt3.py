@@ -11,6 +11,7 @@ import yaml
 from datasets import load_dataset, load_from_disk, concatenate_datasets, DatasetDict, Dataset
 from promptsource.templates import DatasetTemplates, Template
 
+
 import requests
 import time
 import pandas as pd
@@ -20,18 +21,18 @@ load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 configs = {
-    'income': {'prompts': [StringTemplate('${note}')]},
-    'car': {'prompts': [StringTemplate('${note}')]},
-    'heart': {'prompts': [StringTemplate('${note}')]},
-    'diabetes': {'prompts': [StringTemplate('${note}')]},
-    'blood': {'prompts': [StringTemplate('${note}')]},
-    'bank': {'prompts': [StringTemplate('${note}')]},
-    'creditg': {'prompts': [StringTemplate('${note}')]},
-    'calhousing': {'prompts': [StringTemplate('${note}')]},
-    'jungle': {'prompts': [StringTemplate('${note}')]},
+    # 'income': {'prompts': [StringTemplate('${note}')]},
+    # 'car': {'prompts': [StringTemplate('${note}')]},
+    # 'heart': {'prompts': [StringTemplate('${note}')]},
+    # 'diabetes': {'prompts': [StringTemplate('${note}')]},
+    # 'blood': {'prompts': [StringTemplate('${note}')]},
+    # 'bank': {'prompts': [StringTemplate('${note}')]},
+    # 'creditg': {'prompts': [StringTemplate('${note}')]},
+    # 'calhousing': {'prompts': [StringTemplate('${note}')]},
+    # 'jungle': {'prompts': [StringTemplate('${note}')]},
     'ico': {'prompts': [StringTemplate('${note}')]},
 }
-public_tasks = ['income', 'car', 'heart', 'diabetes', 'blood', 'bank', 'creditg', 'calhousing', 'jungle', 'ico']
+public_tasks = ['ico', 'income', 'car', 'heart', 'diabetes', 'blood', 'bank', 'creditg', 'calhousing', 'jungle']
 
 
 def parse_args():
@@ -50,7 +51,7 @@ def unpack_example(example, task):
     return example
 
 
-def post_request(example, model, yes_no_probability=False):
+def post_request_old(example, model, yes_no_probability=False):
     # Remove newline and escape double quotes to prevent ERROR: Your request contained invalid JSON: Expecting ',' delimiter
     text = example['prompt']
     text = json.dumps(text)[1:-1]  # Remove additional quotes for JSON string
@@ -96,6 +97,55 @@ def post_request(example, model, yes_no_probability=False):
     print('-' * 80)
     return output
 
+def post_request(example, model, yes_no_probability=False):
+    text = example['prompt']
+    text = json.dumps(text)[1:-1]  # sanitize prompt string
+
+    print('-' * 80)
+    print(text.replace('\\n', '\n'))
+
+    if model == 'gpt3':
+        url = "https://api.openai.com/v1/completions"
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {OPENAI_API_KEY}"
+        }
+
+        data = {
+            "model": "gpt-3.5-turbo-instruct",  # modern instruct model
+            "prompt": text,
+            "temperature": 0,
+            "max_tokens": 1,
+            "logprobs": 5
+        }
+
+        response = requests.post(url, headers=headers, json=data)
+        response_json = response.json()
+
+        # Handle errors
+        if "error" in response_json:
+            if not response_json["error"]["message"].startswith("Rate limit reached"):
+                raise Exception('ERROR: ' + response_json["error"]["message"] + ' ' + text)
+
+        # Handle probabilities
+        if yes_no_probability:
+            logprobs = response_json["choices"][0]["logprobs"]["top_logprobs"][0]
+            yes_prob = math.exp(logprobs.get(" Yes", -9999)) if " Yes" in logprobs else 0
+            no_prob = math.exp(logprobs.get(" No", -9999)) if " No" in logprobs else 0
+
+            print(f"Yes probability {yes_prob / (yes_prob + no_prob) if (yes_prob + no_prob) > 0 else 0.5}")
+            if yes_prob == 0 and no_prob == 0:
+                return 0.5
+            return yes_prob / (yes_prob + no_prob)
+
+        output = response_json["choices"][0]["text"].strip()
+
+    else:
+        raise ValueError('Unexpected model')
+
+    print(output)
+    print('-' * 80)
+    return output
 
 def submit_req(item, model, max_tries=300, sleep_sec=20, yes_no_probability=False):
     for i in range(max_tries):
@@ -146,7 +196,7 @@ def read_dataset(task, input_file):
             'blood': 'blood',
             'jungle': 'jungle',
             'calhousing': 'calhousing',
-            'ico': 'ico-fraud-classification',
+            'ico': 'ico_fraud_detection',
         }
         temp = [t for k, t in prompts.items() if t.get_name() == templates_for_custom_tasks[task]][0]
         input_list = [{'note': temp.apply(x)[0], 'answer': temp.apply(x)[1], 'label': x['label']} for x in orig_data]
@@ -193,7 +243,8 @@ def main():
                     time.sleep(0)
                 outputs = pd.concat([outputs, pd.Series(output).to_frame(1).T], ignore_index=True)
 
-                if args.model == 'gpt3' and k % 50 == 0:
+                # if args.model == 'gpt3' and k % 50 == 0:
+                if args.model == 'gpt3' and k % 2 == 0:
                     # Write temporary results out
                     outputs.to_csv('output/outputs-' + args.task + start_time + '.csv', index=False)
 
@@ -206,4 +257,7 @@ def main():
 
 
 if __name__ == '__main__':
+    import sys
+    INPUT_PATH = 'C:\\work\\TabLLM\\datasets_serialized\\ico_list'
+    sys.argv = ['query_gpt3.py', '--task', 'ico', '--input', INPUT_PATH, '--model', 'gpt3']
     main()
