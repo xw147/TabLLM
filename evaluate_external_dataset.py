@@ -59,7 +59,12 @@ def main():
         'gpt3': {
           # Dummy model entry, for zero-shot predictions from gpt3
           # To get run it, set shot size to 4
-          'dummy': []
+        #   'dummy': [],
+          'model': ['gpt-3.5-turbo-instruct'],  # modern instruct model
+          'prompt': ['text'],
+          'temperature': [0],
+          'max_tokens': [1],
+          'logprobs': [5]
         }
     }
 
@@ -74,13 +79,13 @@ def main():
         data_dir = Path("/work/TabLLM/datasets")
         data_dir = data_dir / args.dataset
 
-        models = ['tabpfn']
+        models = ['gpt3'] # change the model name here ###########################
         assert(len(models)) == 1  # For current output only one model is supported
         # models = ['output_datasets']
         ts = datetime.now().strftime("-%Y%m%d-%H%M%S")
         # metric = 'roc_auc'  # accuracy
         metric = 'average_precision' # 'auprc', used for hyperparameter tuning
-        num_shots = [4, 8, 16, 32, 64, 128, 'all'] #, 256, 512, 1024, 2048, 4096, 8192, 16384, 50000, 'all']  # ['all']
+        num_shots = [4] #, 8, 16, 32, 64, 128, 'all'] #, 256, 512, 1024, 2048, 4096, 8192, 16384, 50000, 'all']  # ['all']
         seeds = [42, 1024, 0, 1, 32]   # , 45, 655, 186, 126, 836]
         seeded_results = defaultdict(list)
         if metric == 'roc_auc' and args.dataset == 'car':
@@ -167,9 +172,11 @@ def main():
                         continue
 
                     gpt_3_label_idx = []
+                    gpt_3_prob_idx = []
                     if model == 'gpt3':
                         # Offset by one cause label removed later
-                        gpt_3_label_idx = [(i - 1) for i, x in enumerate(list(dataset_train.column_names)) if x.startswith('gpt3_output')]
+                        gpt_3_label_idx = [(i - 1) for i, x in enumerate(list(dataset_train.column_names)) if x.startswith('gpt3_pred_label')]
+                        gpt_3_prob_idx = [(i - 1) for i, x in enumerate(list(dataset_train.column_names)) if x.startswith('gpt3_pos_prob')]
 
                     # In depth debug linear model
                     # print(list(dataset_train.remove_columns(['label']).to_pandas().columns))
@@ -185,6 +192,7 @@ def main():
                     X_valid = np.array([])
                     y_valid = np.array([])
 
+
                     # Replace the existing evaluation section:
                     if model != 'gpt3':
                         primary_metric, all_metrics = evaluate_model(seed, model, metric, parameters[model], 
@@ -194,15 +202,36 @@ def main():
                         results = primary_metric  # For backward compatibility
                     else:
                         # Handle GPT-3 case as before
+                        y_pred = X_test[:, gpt_3_label_idx]
+                        y_proba = X_test[:, gpt_3_prob_idx]
+
+                        df_test = pd.DataFrame(np.column_stack([y_test, y_pred, y_proba]), columns=['y_test', 'y_pred', 'y_proba'])
+                        print(df_test)
+
+                        precision, recall, f1, _ = precision_recall_fscore_support(y_test, y_pred, average='binary', zero_division=0)
+                        auprc = average_precision_score(y_test, y_proba)
+                        all_metrics = {
+                        'precision': precision,
+                        'recall': recall,
+                        'f1_score': f1,
+                        'auprc': auprc
+                        }
+
                         if metric == 'roc_auc':
-                            results = roc_auc_score(y_test, X_test[:, gpt_3_label_idx])
+                            results = roc_auc_score(y_test, y_proba)
                         elif metric == 'roc_auc_ovr':
-                            results = roc_auc_score(y_test, X_test[:, gpt_3_label_idx], multi_class='ovr', average='macro')
+                            results = roc_auc_score(y_test, y_proba, multi_class='ovr', average='macro')
+                        elif metric == 'average_precision':
+                            results = average_precision_score(y_test, y_proba)
+
+                        # calculate other metric to get all metrics
+                        all_metrics_per_shot[original_num_shot].append(all_metrics)
 
                     seeded_results[num_shot] = seeded_results[num_shot] + [results]
 
             # Save results after all experiments for this model are completed
-            if model != 'gpt3' and model != 'output_datasets':
+            # if model != 'gpt3' and model != 'output_datasets':
+            if model != 'output_datasets':
                 model_params = parameters[model] if model in parameters else {}
                 dataset_info = {
                     "dataset_name": args.dataset,
@@ -261,11 +290,12 @@ def evaluate_model(seed, model, metric, parameters, X_train, y_train, X_valid, y
         return TabPFNClassifier()
 
     def compute_metric(clf_in, X, y):
-        
-        
         # Get predictions and probabilities for binary classification
         y_pred = clf_in.predict(X)
         y_proba = clf_in.predict_proba(X)[:, 1]  # Probability of positive class
+
+        df_test = pd.DataFrame(np.column_stack([y_test, y_pred, y_proba]), columns=['y_test', 'y_pred', 'y_proba'])
+        print(df_test)
         
         # Calculate precision, recall, f1 for binary classification
         precision, recall, f1, _ = precision_recall_fscore_support(y, y_pred, average='binary', zero_division=0)
@@ -325,7 +355,6 @@ def evaluate_model(seed, model, metric, parameters, X_train, y_train, X_valid, y
     # Calculate all metrics for binary classification
     y_pred = clf.predict(X_test)
     y_proba = clf.predict_proba(X_test)[:, 1]  # Probability of positive class
-    
     # Calculate all metrics
     precision, recall, f1, _ = precision_recall_fscore_support(y_test, y_pred, average='binary', zero_division=0)
     auprc = average_precision_score(y_test, y_proba)
@@ -488,7 +517,7 @@ def sample_few_shot_data(orig_data, num_shot, few_shot_random_seed):
 
 def add_gpt3_zero_shot_predictions(dataset, task, data_dir):
     gpt3_output = pd.read_csv(data_dir.parent / 'gpt-3-zero-shot' / ('outputs-' + task + '.csv'))
-    if task == 'car':
+    if task == 'car': # may need to add gpt3 label, etc.
         splitted_predictions = [[], [], [], []]
         for p in gpt3_output['output0'].to_list():
             preds = [float(x) for x in p.split(', ')]
@@ -499,7 +528,9 @@ def add_gpt3_zero_shot_predictions(dataset, task, data_dir):
             dataset = dataset.add_column('gpt3_output' + str(i), l)
         print('')
     else:
-        dataset = dataset.add_column('gpt3_output', gpt3_output['output0'])
+       
+        dataset = dataset.add_column('gpt3_pred_label', gpt3_output['pred_label'])
+        dataset = dataset.add_column('gpt3_pos_prob', gpt3_output['pos_prob'])
 
     return dataset
 
@@ -592,4 +623,5 @@ def save_model_results(model_name, all_metrics_per_shot, model_params=None,
     return results
 
 if __name__ == '__main__':
+   
     main()

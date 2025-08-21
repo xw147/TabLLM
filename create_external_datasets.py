@@ -388,11 +388,12 @@ def load_train_validation_test(dataset_name, data_dir):
         dataset = pd.read_csv(data_dir / 'common_features.csv')
         original_size = len(dataset)
         # Convert riskLevel to binary: 0 or 1 = No Fraud (0), >1 = Fraud (1)
-        dataset['label'] = (dataset['riskLevel'] > 1).astype(int)
+        dataset['label'] = (dataset['riskLevel'] > 1).astype(int) # this step is correct
+        # print(dataset[['riskLevel', 'label']]) 
         # Drop non-feature columns: target, IDs, and fraud-only descriptive variables
         columns_to_drop = ['riskLevel', 'name', 'token_symbol', 'dc_Category', 'dc_EntryDate', 'dc_Summary']
         dataset = dataset.drop(columns=columns_to_drop)
-        dataset_train, dataset_valid, dataset_test = train_validation_test_split(dataset)
+        dataset_train, dataset_valid, dataset_test = train_validation_test_split(dataset) # already organise data by three sets split
         assert len(dataset_train) + len(dataset_valid) + len(dataset_test) == original_size
 
     else:

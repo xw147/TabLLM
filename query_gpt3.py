@@ -51,112 +51,89 @@ def unpack_example(example, task):
     return example
 
 
-def post_request_old(example, model, yes_no_probability=False):
-    # Remove newline and escape double quotes to prevent ERROR: Your request contained invalid JSON: Expecting ',' delimiter
-    text = example['prompt']
-    text = json.dumps(text)[1:-1]  # Remove additional quotes for JSON string
+###################################
+# The probability is computed from the log-odds between the target tokens (e.g., “Yes” vs. “No”), 
+# transformed with a sigmoid to yield a stable, interpretable class probability.
+###################################
+def post_request(example, model):
+    text = json.dumps(example['prompt'])[1:-1]  # sanitize prompt
 
     print('-' * 80)
     print(text.replace('\\n', '\n'))
 
-    if model == 'gpt3':
-        # Updated to use modern OpenAI API
-        url = "https://api.openai.com/v1/completions"
-        headers = {"Content-Type": "application/json", "Authorization": "Bearer " + OPENAI_API_KEY}
-        
-        # Use gpt-3.5-turbo-instruct (closest to the old davinci models for completions)
-        data = {
-            "model": "gpt-3.5-turbo-instruct",
-            "prompt": text,
-            "temperature": 0,
-            "max_tokens": 1,
-            "logprobs": 5  # Note: max logprobs is now 5, not 50
-        }
-        
-        response_json = requests.post(url, headers=headers, json=data).json()
+    if model != "gpt3":
+        raise ValueError("Unexpected model")
 
-        if 'error' in response_json:
-            if not response_json['error']['message'].startswith("Rate limit reached"):
-                raise Exception('ERROR: ' + response_json['error']['message'] + ' ' + text)
+    # API call
+    url = "https://api.openai.com/v1/completions"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {OPENAI_API_KEY}"
+    }
+    data = {
+        "model": "gpt-3.5-turbo-instruct",
+        "prompt": text,
+        "temperature": 0,
+        "max_tokens": 1,
+        "logprobs": 5 # include logprobs for probability calculation
+    }
+    response = requests.post(url, headers=headers, json=data).json()
+    
+    if "error" in response:
+        raise Exception("ERROR: " + response["error"]["message"])
 
-        if yes_no_probability:
-            logprobs = response_json["choices"][0]["logprobs"]["top_logprobs"][0]
-            yes_prob = 0 if ' Yes' not in logprobs.keys() else math.exp(logprobs[' Yes'])
-            no_prob = 0 if ' No' not in logprobs.keys() else math.exp(logprobs[' No'])
-            print(f"Yes probability {yes_prob / (yes_prob + no_prob)}")
-            if yes_prob == 0 and no_prob == 0:
-                return 0.5
-            return yes_prob / (yes_prob + no_prob)
+    choice = response["choices"][0]
+    output = choice["text"].strip() # the output token
 
-        output = response_json["choices"][0]["text"]
+    # normalize tokens
+    def norm(tok): 
+        return tok.strip().strip(".,!?;:").lower()
 
+    yes_variants = {"yes", "y"}
+    no_variants  = {"no", "n"}
+
+    # get top_logprobs and chosen token
+    top = choice.get("logprobs", {}).get("top_logprobs", [{}])[0]
+    chosen = choice.get("logprobs", {}).get("tokens", [output])[0]
+    chosen_lp = top.get(chosen, 0.0)
+
+    # assign logprobs
+    yes_lp = max((v for k,v in top.items() if norm(k) in yes_variants), default=None)
+    no_lp  = max((v for k,v in top.items() if norm(k) in no_variants), default=None)
+
+    # ensure chosen token is included
+    if norm(chosen) in yes_variants:
+        yes_lp = chosen_lp if yes_lp is None else max(yes_lp, chosen_lp)
+    elif norm(chosen) in no_variants:
+        no_lp = chosen_lp if no_lp is None else max(no_lp, chosen_lp)
+
+    # compute probability
+    if yes_lp is not None and no_lp is not None:
+        log_odds = yes_lp - no_lp #log pro difference
+        prob_yes = 1 / (1 + math.exp(-log_odds)) # sigmoid
     else:
-        raise ValueError('Unexpected model')
+        prob_yes = 1.0 if norm(output) in yes_variants else 0.0
 
-    print(output)
+    pred_label = 1 if norm(output) in yes_variants else 0
+
+    print(f"Predicted label: {pred_label}, Probability: {prob_yes:.4f}")
     print('-' * 80)
-    return output
 
-def post_request(example, model, yes_no_probability=False):
-    text = example['prompt']
-    text = json.dumps(text)[1:-1]  # sanitize prompt string
+    return pred_label, prob_yes
 
-    print('-' * 80)
-    print(text.replace('\\n', '\n'))
 
-    if model == 'gpt3':
-        url = "https://api.openai.com/v1/completions"
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {OPENAI_API_KEY}"
-        }
 
-        data = {
-            "model": "gpt-3.5-turbo-instruct",  # modern instruct model
-            "prompt": text,
-            "temperature": 0,
-            "max_tokens": 1,
-            "logprobs": 5
-        }
 
-        response = requests.post(url, headers=headers, json=data)
-        response_json = response.json()
-
-        # Handle errors
-        if "error" in response_json:
-            if not response_json["error"]["message"].startswith("Rate limit reached"):
-                raise Exception('ERROR: ' + response_json["error"]["message"] + ' ' + text)
-
-        # Handle probabilities
-        if yes_no_probability:
-            logprobs = response_json["choices"][0]["logprobs"]["top_logprobs"][0]
-            yes_prob = math.exp(logprobs.get(" Yes", -9999)) if " Yes" in logprobs else 0
-            no_prob = math.exp(logprobs.get(" No", -9999)) if " No" in logprobs else 0
-
-            print(f"Yes probability {yes_prob / (yes_prob + no_prob) if (yes_prob + no_prob) > 0 else 0.5}")
-            if yes_prob == 0 and no_prob == 0:
-                return 0.5
-            return yes_prob / (yes_prob + no_prob)
-
-        output = response_json["choices"][0]["text"].strip()
-
-    else:
-        raise ValueError('Unexpected model')
-
-    print(output)
-    print('-' * 80)
-    return output
-
-def submit_req(item, model, max_tries=300, sleep_sec=20, yes_no_probability=False):
+def submit_req(item, model, max_tries=300, sleep_sec=20):
     for i in range(max_tries):
         try:
-            return post_request(item, model, yes_no_probability=yes_no_probability)
+            return post_request(item, model)
         except Exception as e:
             print(e)
             print(f"Request error; retrying in {sleep_sec} sec\n")
             time.sleep(sleep_sec)
     print("RAN OUT OF QUOTA or issues w/ API; quitting")
-    return None
+    return None, None
 
 
 # From: https://stackoverflow.com/questions/2148119/how-to-convert-an-xml-string-to-a-dictionary
@@ -199,7 +176,8 @@ def read_dataset(task, input_file):
             'ico': 'ico_fraud_detection',
         }
         temp = [t for k, t in prompts.items() if t.get_name() == templates_for_custom_tasks[task]][0]
-        input_list = [{'note': temp.apply(x)[0], 'answer': temp.apply(x)[1], 'label': x['label']} for x in orig_data]
+
+        input_list = [{'note': temp.apply(x)[0], 'true_answer': temp.apply(x)[1], 'true_label': x['label']} for x in orig_data]
     else:
         raise ValueError("Invalid task name")
 
@@ -236,15 +214,16 @@ def main():
                 output['prompt' + str(i)] = prompt
                 if args.model == 'gpt3':
                     if args.task in public_tasks:
-                        out = submit_req(example, args.model, yes_no_probability=False)
+                        pred_label, pred_prob = submit_req(example, args.model)
                     else:
-                        out = submit_req(example, args.model).strip()
-                    output['output' + str(i)] = out
+                        pred_label, pred_prob = submit_req(example, args.model)
+                    output['pred_label'] = pred_label
+                    output['pos_prob'] = pred_prob
                     time.sleep(0)
                 outputs = pd.concat([outputs, pd.Series(output).to_frame(1).T], ignore_index=True)
 
                 # if args.model == 'gpt3' and k % 50 == 0:
-                if args.model == 'gpt3' and k % 2 == 0:
+                if args.model == 'gpt3' and k % 50 == 0:
                     # Write temporary results out
                     outputs.to_csv('output/outputs-' + args.task + start_time + '.csv', index=False)
 

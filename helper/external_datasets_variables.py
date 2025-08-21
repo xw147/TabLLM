@@ -665,7 +665,7 @@ ico_feature_names = [
     ('country_combined', 'headquarter country'),
     ('ICODuration_combined', 'ICO duration'),
     ('preICODuration_combined', 'pre-ICO duration'),
-    ('rating_combined', 'rating'),
+    ('rating_combined', 'rating(1 to 5)'),
     ('ERC20_combined', 'ERC20 compliance'),
     ('is_Ethereum_based', 'ethereum-based status'),
     ('token_type', 'token type'),

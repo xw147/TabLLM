@@ -3,15 +3,16 @@ from string import Template as StringTemplate
 
 # Test data loading
 print("Testing data loading...")
-dataset = read_dataset('ico', 'datasets_serialized/ico')
+dataset = read_dataset('ico', 'datasets_serialized/ico_list')
 # print(f"Loaded {len(dataset)} examples")
 
 # # Test first example
-example = dataset[0]
-print(f"First example keys: {example.keys()}")
-print(f"Note preview: {example['note'][:]}...")
-print(f"Label: {example['label']}")
-print(f"Label: {example['answer']}")
+for i in range(0, min(10, len(dataset))):
+    example = dataset[i]
+    print(f"First example keys: {example.keys()}")
+    print(f"Note preview: {example['note'][:]}...")
+    print(f"Label: {example['label']}")
+    print(f"Answer: {example['answer']}")
 
 
 # Test prompt generation

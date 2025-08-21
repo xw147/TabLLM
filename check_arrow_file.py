@@ -1,7 +1,7 @@
 from datasets import load_from_disk
 
 # Load the dataset
-dataset = load_from_disk('datasets_serialized/ico')
+dataset = load_from_disk('datasets_serialized/ico_list')
 
 # Check dataset info
 print("Dataset info:")
