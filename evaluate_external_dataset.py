@@ -54,7 +54,7 @@ def main():
         },
         'tabpfn': {
             'device': ['cuda'],
-            'n_estimators': [32]
+            # 'n_estimators': [32]
         },
         'gpt3': {
           # Dummy model entry, for zero-shot predictions from gpt3
@@ -79,13 +79,13 @@ def main():
         data_dir = Path("/work/TabLLM/datasets")
         data_dir = data_dir / args.dataset
 
-        models = ['gpt3'] # change the model name here ###########################
+        models = ['tabpfn'] # change the model name here ###########################
         assert(len(models)) == 1  # For current output only one model is supported
         # models = ['output_datasets']
         ts = datetime.now().strftime("-%Y%m%d-%H%M%S")
         # metric = 'roc_auc'  # accuracy
         metric = 'average_precision' # 'auprc', used for hyperparameter tuning
-        num_shots = [4] #, 8, 16, 32, 64, 128, 'all'] #, 256, 512, 1024, 2048, 4096, 8192, 16384, 50000, 'all']  # ['all']
+        num_shots = [4, 8, 16, 32, 64, 128, 256, 512, 'all'] # 1024, 2048, 4096, 8192, 16384, 50000, 'all']  # ['all']
         seeds = [42, 1024, 0, 1, 32]   # , 45, 655, 186, 126, 836]
         seeded_results = defaultdict(list)
         if metric == 'roc_auc' and args.dataset == 'car':

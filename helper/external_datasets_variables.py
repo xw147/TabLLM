@@ -682,7 +682,13 @@ ico_feature_names = [
     ('has_whitepaper', 'whitepaper availability'),
     ('has_twitter', 'Twitter presence'),
     ('has_github', 'GitHub presence'),
-    ('has_telegram', 'Telegram presence')
+    ('has_telegram', 'Telegram presence'),
+    # for LLM features
+    # ('slogan', 'slogan'),
+    # ('categories', 'categories'),
+    # ('restrictedAreas_combined', 'excluded investor regions'),
+    # ('accepting_combined', 'accepted payments'),
+    # ('min_investment_combined', 'minimum investment')
 ]
 
 # Basic preprocessing configuration for ICO data

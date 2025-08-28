@@ -43,7 +43,9 @@ cat_idx_dict = {
     "jungle": [],
     "calhousing": [],
     # Updated categorical features for ICO (0-indexed after dropping 6 columns)
-    "ico": [0,4,5,6,8,9,10,14,15,16,17,18,19,20,21],  # categorical features for ICO
+    "ico": [0,4,5,6,8,9,10,14,15,16,17,18,19,20],  # categorical features for ICO, common features
+    #  "ico": [0,4,5,6,8,9,10,14,15,16,17,18,19,20,22, 23, 24, 25, 26, 27, 29, 30, 31, 33],  # for ML features
+    #  "ico": [0,4,5,6,8,9,10,14,15,16,17,18,19,20,21, 22, 23, 24, 25],  # for LLM features
 }
 bin_num = 10
 
@@ -387,8 +389,8 @@ def load_train_validation_test(dataset_name, data_dir):
         # Load ICO fraud dataset
         dataset = pd.read_csv(data_dir / 'common_features.csv')
         original_size = len(dataset)
-        # Convert riskLevel to binary: 0 or 1 = No Fraud (0), >1 = Fraud (1)
-        dataset['label'] = (dataset['riskLevel'] > 1).astype(int) # this step is correct
+        # Convert riskLevel to binary: 0 = No Fraud (0), >0 = Fraud (1)
+        dataset['label'] = (dataset['riskLevel'] > 0).astype(int) # this step is correct
         # print(dataset[['riskLevel', 'label']]) 
         # Drop non-feature columns: target, IDs, and fraud-only descriptive variables
         columns_to_drop = ['riskLevel', 'name', 'token_symbol', 'dc_Category', 'dc_EntryDate', 'dc_Summary']
@@ -411,7 +413,9 @@ def load_train_validation_test(dataset_name, data_dir):
         'jungle': 7,
         'wine': 12,
         'calhousing': 9,
-        'ico': 22  # 22 features + 1 label (excluding riskLevel, name_check, token_check, dc_Category, dc_EntryDate, dc_Summary)
+        'ico': 22  # 22 features + 1 label for common features
+        # 'ico': 36  # for ML features
+        # 'ico': 27  # for ML features
     }
     assert dataset_name in dataset_specs.keys() and len(dataset.columns) == dataset_specs[dataset_name]
 
