@@ -25,7 +25,7 @@ templates_for_custom_tasks = {
     'blood': 'blood',
     'jungle': 'jungle',
     'calhousing': 'calhousing',
-    'ico': 'ico-fraud-classification',
+    'ico': 'ico_fraud_detection',
 }
 
 
@@ -70,11 +70,12 @@ def get_dataset_reader(config):
     else:
         # Check if it's ICO dataset
         task = config.dataset.split('_')[0].lower()
-        if task == 'ico':
-            dataset_class = ICOCategoricalReader  # Use ICO-specific reader
-        else:
-            dataset_class = CustomCategoricalReader  # Use default reader
-
+        # if task == 'ico':
+        #     dataset_class = ICOCategoricalReader  # Use ICO-specific reader
+        # else:
+        #     dataset_class = CustomCategoricalReader  # Use default reader
+        dataset_class = CustomCategoricalReader
+    
     return dataset_class(config)
 
 
