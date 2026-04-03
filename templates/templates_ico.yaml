@@ -1,7 +1,9 @@
-dataset: ico
+dataset: ico 
 templates:
-  ico-fraud-classification: !Template
-    name: ico_fraud_detection
+
+  # 🔹 Original prompt
+  ico-fraud-classification-original: !Template
+    name: ico_fraud_detection_old
     id: ico-fraud-classification-001
     reference: 'ICO Fraud Classification using TabLLM'
     answer_choices: 'No ||| Yes' # No: label 0; Yes: label 1
@@ -10,6 +12,38 @@ templates:
       
       Consider an ICO risky if it has multiple strong red flags. Is this ICO high-risk? Answer Yes or No. 
       Answer: 
+      |||
+      {{ answer_choices[label] }}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      metrics: ['auprc','f1', 'precision', 'recall']
+      original_task: true
+
+
+  # 🔹 New improved prompt 
+  ico-fraud-classification-structured: !Template
+    name: ico_fraud_detection
+    id: ico-fraud-classification-002
+    reference: 'ICO Fraud Classification using TabLLM'
+    answer_choices: 'No ||| Yes'
+    jinja: '{{note}}
+      
+      
+      You are evaluating whether an ICO project exhibits signs of operational misconduct.
+
+      Definition:
+      Operational misconduct refers to patterns consistent with intentional deception in marketing signals.
+      Poor business prospects alone do NOT constitute misconduct.
+
+      Guidelines:
+      - Only answer "Yes" if there are strong and credible signals suggesting intentional deception.
+      - Missing information or weak fundamentals alone are NOT sufficient.
+      - If the evidence is weak or ambiguous, answer "No".
+
+      Question:
+      Does this ICO project exhibit signs of operational misconduct?
+
+      Answer (Yes or No):
       |||
       {{ answer_choices[label] }}'
     metadata: !TemplateMetadata
