@@ -57,14 +57,24 @@ The headquarter country is Switzerland. The ICO duration is not disclosed. The p
 #     temperature=0,
 # )
 
+# response = client.chat.completions.create(
+#     model="gpt-4o",
+#     messages=[
+#         # {"role": "system", "content": "You are a fraud detection assistant. Consider an ICO project high-risk if it exhibits multiple common red flags."},
+#         {"role": "user", "content": f"You are evaluating whether an ICO project exhibits signs of operational misconduct.\
+#          Definition: Operational misconduct refers to patterns consistent with intentional deception in marketing signals. Poor business prospects alone do NOT constitute misconduct.\
+#          Guidelines: Only answer 'Yes' if there are strong and credible signals suggesting intentional deception. Missing information or weak fundamentals alone are NOT sufficient. If the evidence is weak or ambiguous, answer 'No'.\
+#          Question: Does this ICO project exhibit signs of operational misconduct? Answer (Yes or No):\n\n{ico_sample}"}
+#     ],
+#     temperature=0,
+# )
+
+
+
 response = client.chat.completions.create(
     model="gpt-4o",
     messages=[
-        # {"role": "system", "content": "You are a fraud detection assistant. Consider an ICO project high-risk if it exhibits multiple common red flags."},
-        {"role": "user", "content": f"You are evaluating whether an ICO project exhibits signs of operational misconduct.\
-         Definition: Operational misconduct refers to patterns consistent with intentional deception in marketing signals. Poor business prospects alone do NOT constitute misconduct.\
-         Guidelines: Only answer 'Yes' if there are strong and credible signals suggesting intentional deception. Missing information or weak fundamentals alone are NOT sufficient. If the evidence is weak or ambiguous, answer 'No'.\
-         Question: Does this ICO project exhibit signs of operational misconduct? Answer (Yes or No):\n\n{ico_sample}"}
+        {"role": "user", "content": f"You are evaluating whether an ICO project shows signs of fraud. Fraud refers to potential scam, deceptive behaviour, or misleading claims. Based on the information given, does this ICO project exhibit signs of fraud? Answer with exactly one word: Yes or No.:\n\n{ico_sample}"}
     ],
     temperature=0,
 )

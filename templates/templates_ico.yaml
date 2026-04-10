@@ -22,7 +22,7 @@ templates:
 
   # 🔹 New improved prompt 
   ico-fraud-classification-structured: !Template
-    name: ico_fraud_detection
+    name: ico_fraud_detection_misconduct
     id: ico-fraud-classification-002
     reference: 'ICO Fraud Classification using TabLLM'
     answer_choices: 'No ||| Yes'
@@ -43,6 +43,29 @@ templates:
       Question:
       Does this ICO project exhibit signs of operational misconduct?
 
+      Answer (Yes or No):
+      |||
+      {{ answer_choices[label] }}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      metrics: ['auprc','f1', 'precision', 'recall']
+      original_task: true
+
+
+ # Used improved prompt 
+dataset: ico 
+templates:
+
+  ico-fraud-classification-fraud: !Template
+    name: ico_fraud_detection
+    id: ico-fraud-classification-003
+    reference: 'ICO Fraud Classification using TabLLM (fraud wording)'
+    answer_choices: 'No ||| Yes' # No: label 0; Yes: label 1
+    jinja: '{{note}}
+      
+      You are evaluating whether an ICO project shows signs of fraud.
+      Fraud refers to potential scam, deceptive behaviour, or misleading claims. 
+      Based on the information given, does this ICO project exhibit signs of fraud?
       Answer (Yes or No):
       |||
       {{ answer_choices[label] }}'
