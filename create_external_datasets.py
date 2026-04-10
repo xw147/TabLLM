@@ -31,7 +31,7 @@ from helper.preprocess import preprocess
 
 
 logger = logging.getLogger(__name__)
-
+# only called inside shuffle_dataset, which only runs when you pass --shuffled.
 cat_idx_dict = {
     "car": [0,1,2,3,4,5],
     "diabetes": [],
@@ -55,10 +55,10 @@ def main():
     logging.basicConfig(level=logging.INFO)
 
     # Configuration
-    data_dir = Path("/work/TabLLM/datasets")
+    data_dir = Path("/Users/work/TabLLM/datasets")
     data_dir = data_dir / args.dataset
     temp_output = 'dataset-generation-' + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    output_dir = Path("/work/TabLLM/datasets_serialized") / temp_output
+    output_dir = Path("/Users/work/TabLLM/datasets_serialized") / temp_output
     if not args.debug:
         os.mkdir(output_dir)
     logger.info(f"Generate dataset {args.dataset}.")
@@ -387,7 +387,7 @@ def load_train_validation_test(dataset_name, data_dir):
 
     elif dataset_name == "ico":
         # Load ICO fraud dataset
-        dataset = pd.read_csv(data_dir / 'common_features.csv')
+        dataset = pd.read_csv(data_dir / 'common_features_rowsRemoved8.csv')
         original_size = len(dataset)
         # Convert riskLevel to binary: 0 = No Fraud (0), >0 = Fraud (1)
         dataset['label'] = (dataset['riskLevel'] > 0).astype(int) # this step is correct
@@ -402,6 +402,8 @@ def load_train_validation_test(dataset_name, data_dir):
         raise ValueError("Dataset not found")
 
     # For final experiments, ensure correct numbers of features for each dataset
+    # a hardcoded sanity check asserting the exact column count per dataset.
+    # catches bugs like accidentally dropping or keeping the wrong columns.
     dataset_specs = {
         'income': 13,
         'car': 7,  

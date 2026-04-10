@@ -16,7 +16,7 @@ templates:
       {{ answer_choices[label] }}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
-      metrics: ['auprc','f1', 'precision', 'recall']
+      metrics: ['auprc','f1', 'precision', 'recall', 'specificity', 'auroc', 'micro_f1', 'macro_f1', 'accuracy']
       original_task: true
 
 
@@ -48,5 +48,5 @@ templates:
       {{ answer_choices[label] }}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
-      metrics: ['auprc','f1', 'precision', 'recall']
+      metrics: ['auprc','f1', 'precision', 'recall', 'specificity', 'auroc', 'micro_f1', 'macro_f1', 'accuracy']
       original_task: true
