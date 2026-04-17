@@ -12,7 +12,7 @@ import xgboost as xgboost
 from datasets import DatasetDict, concatenate_datasets, Dataset
 from sklearn.linear_model import LogisticRegression
 import lightgbm as lgb
-from sklearn.metrics import roc_auc_score, average_precision_score
+from sklearn.metrics import roc_auc_score, average_precision_score, accuracy_score, confusion_matrix, f1_score
 from sklearn.model_selection import StratifiedKFold, GridSearchCV, KFold
 from sklearn.preprocessing import StandardScaler, OrdinalEncoder
 from tabpfn import TabPFNClassifier
@@ -76,17 +76,17 @@ def main():
     all_metrics_per_shot = {}
     for args.dataset in args_datasets:
         # Configuration
-        data_dir = Path("/work/TabLLM/datasets")
+        data_dir = Path("/Users/work/TabLLM/datasets")
         data_dir = data_dir / args.dataset
 
-        models = ['tabpfn'] # change the model name here ###########################
+        models = ['xgboost'] # change the model name here ###########################
         assert(len(models)) == 1  # For current output only one model is supported
         # models = ['output_datasets']
         ts = datetime.now().strftime("-%Y%m%d-%H%M%S")
         # metric = 'roc_auc'  # accuracy
         metric = 'average_precision' # 'auprc', used for hyperparameter tuning
-        num_shots = [4,  8, 16, 32, 64, 128, 256, 512, 'all'] # 1024, 2048, 4096, 8192, 16384, 50000, 'all']  # ['all']
-        seeds = [42, 1024, 0, 1, 32]   # , 45, 655, 186, 126, 836]
+        num_shots = [4,  8, 16, 32 ]#, 64, 128, 256, 512, 'all'] # 1024, 2048, 4096, 8192, 16384, 50000, 'all']  # ['all']
+        seeds = [42 ]#, 1024, 0, 1, 32]   # , 45, 655, 186, 126, 836]
         seeded_results = defaultdict(list)
         if metric == 'roc_auc' and args.dataset == 'car':
             # This computes the roc_auc_score for ovr on macro level:
@@ -210,11 +210,22 @@ def main():
 
                         precision, recall, f1, _ = precision_recall_fscore_support(y_test, y_pred, average='binary', zero_division=0)
                         auprc = average_precision_score(y_test, y_proba)
+                        tn, fp, fn, tp = confusion_matrix(y_test, y_pred).ravel()
+                        specificity = tn / (tn + fp) if (tn + fp) > 0 else 0.0
+                        auroc = roc_auc_score(y_test, y_proba)
+                        micro_f1 = f1_score(y_test, y_pred, average='micro', zero_division=0)
+                        macro_f1 = f1_score(y_test, y_pred, average='macro', zero_division=0)
+                        acc = accuracy_score(y_test, y_pred)
                         all_metrics = {
                         'precision': precision,
                         'recall': recall,
                         'f1_score': f1,
-                        'auprc': auprc
+                        'auprc': auprc,
+                        'specificity': specificity,
+                        'auroc': auroc,
+                        'micro_f1': micro_f1,
+                        'macro_f1': macro_f1,
+                        'accuracy': acc
                         }
 
                         if metric == 'roc_auc':
@@ -300,12 +311,23 @@ def evaluate_model(seed, model, metric, parameters, X_train, y_train, X_valid, y
         # Calculate precision, recall, f1 for binary classification
         precision, recall, f1, _ = precision_recall_fscore_support(y, y_pred, average='binary', zero_division=0)
         auprc = average_precision_score(y, y_proba)
+        tn, fp, fn, tp = confusion_matrix(y, y_pred).ravel()
+        specificity = tn / (tn + fp) if (tn + fp) > 0 else 0.0
+        auroc = roc_auc_score(y, y_proba)
+        micro_f1 = f1_score(y, y_pred, average='micro', zero_division=0)
+        macro_f1 = f1_score(y, y_pred, average='macro', zero_division=0)
+        acc = accuracy_score(y, y_pred)
         
         all_metrics = {
             'precision': precision,
             'recall': recall,
             'f1_score': f1,
-            'auprc': auprc
+            'auprc': auprc,
+            'specificity': specificity,
+            'auroc': auroc,
+            'micro_f1': micro_f1,
+            'macro_f1': macro_f1,
+            'accuracy': acc
         }
         
         # Return specific metric for compatibility with existing code
@@ -358,12 +380,23 @@ def evaluate_model(seed, model, metric, parameters, X_train, y_train, X_valid, y
     # Calculate all metrics
     precision, recall, f1, _ = precision_recall_fscore_support(y_test, y_pred, average='binary', zero_division=0)
     auprc = average_precision_score(y_test, y_proba)
+    tn, fp, fn, tp = confusion_matrix(y_test, y_pred).ravel()
+    specificity = tn / (tn + fp) if (tn + fp) > 0 else 0.0
+    auroc = roc_auc_score(y_test, y_proba)
+    micro_f1 = f1_score(y_test, y_pred, average='micro', zero_division=0)
+    macro_f1 = f1_score(y_test, y_pred, average='macro', zero_division=0)
+    acc = accuracy_score(y_test, y_pred)
     
     all_metrics = {
         'precision': precision,
         'recall': recall,
         'f1_score': f1,
-        'auprc': auprc
+        'auprc': auprc,
+        'specificity': specificity,
+        'auroc': auroc,
+        'micro_f1': micro_f1,
+        'macro_f1': macro_f1,
+        'accuracy': acc
     }
     
     # Return the specific metric being evaluated plus all metrics
@@ -576,7 +609,7 @@ def save_model_results(model_name, all_metrics_per_shot, model_params=None,
     
     # Process metrics for each shot size
     processed_results = {}
-    metric_names = ['precision', 'recall', 'f1_score', 'auprc']
+    metric_names = ['precision', 'recall', 'f1_score', 'auprc', 'specificity', 'auroc', 'micro_f1', 'macro_f1', 'accuracy']
     
     for shot_size, metrics_list in all_metrics_per_shot.items():
         processed_results[str(shot_size)] = {}

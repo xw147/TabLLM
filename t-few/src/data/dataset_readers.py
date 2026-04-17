@@ -13,7 +13,7 @@ import csv
 from typing import Dict, List, Optional, Tuple
 import re
 import pandas as pd
-from sklearn.metrics import roc_auc_score, precision_recall_curve, auc, f1_score, precision_score, recall_score
+from sklearn.metrics import roc_auc_score, precision_recall_curve, auc, f1_score, precision_score, recall_score, accuracy_score, confusion_matrix
 
 templates_for_custom_tasks = {
     'income': '50000_dollars',
@@ -780,11 +780,27 @@ class ICOCategoricalReader(CustomCategoricalReader):
             precision = precision_score(accumulated['label'], accumulated['prediction'], average='binary')
             recall = recall_score(accumulated['label'], accumulated['prediction'], average='binary')
             f1_binary = f1_score(accumulated['label'], accumulated['prediction'], average='binary')
+            micro_f1 = f1_score(accumulated['label'], accumulated['prediction'], average='micro')
+            macro_f1 = f1_score(accumulated['label'], accumulated['prediction'], average='macro')
+            acc = accuracy_score(accumulated['label'], accumulated['prediction'])
+            
+            tn, fp, fn, tp = confusion_matrix(accumulated['label'], accumulated['prediction']).ravel()
+            specificity = tn / (tn + fp) if (tn + fp) > 0 else 0.0
+            
+            pos_probs = [p[1] for p in accumulated['probabilities']]
+            auroc = roc_auc_score(accumulated['label'], pos_probs)
+            pr_auc = pr_auc_score(accumulated['label'], pos_probs)
             
             metrics.update({
                 'f1': f1_binary,
                 'precision': precision, 
                 'recall': recall,
+                'specificity': specificity,
+                'auroc': auroc,
+                'auprc': pr_auc,
+                'micro_f1': micro_f1,
+                'macro_f1': macro_f1,
+                'accuracy': acc,
                 'num': len(accumulated['prediction'])
             })
         else:
@@ -792,11 +808,22 @@ class ICOCategoricalReader(CustomCategoricalReader):
             precision_macro = precision_score(accumulated['label'], accumulated['prediction'], average='macro')
             recall_macro = recall_score(accumulated['label'], accumulated['prediction'], average='macro')
             f1_macro = f1_score(accumulated['label'], accumulated['prediction'], average='macro')
+            micro_f1 = f1_score(accumulated['label'], accumulated['prediction'], average='micro')
+            acc = accuracy_score(accumulated['label'], accumulated['prediction'])
+            
+            probs = [p for p in accumulated['probabilities']]
+            auroc = roc_auc_score(accumulated['label'], probs, multi_class='ovr', average='macro')
             
             metrics.update({
                 'f1': f1_macro,
                 'precision': precision_macro,
                 'recall': recall_macro,
+                'specificity': 0.0,
+                'auroc': auroc,
+                'auprc': 0.0,
+                'micro_f1': micro_f1,
+                'macro_f1': f1_macro,
+                'accuracy': acc,
                 'num': len(accumulated['prediction'])
             })
         
