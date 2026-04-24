@@ -8,6 +8,7 @@ from pathlib import Path
 import datasets
 import numpy as np
 import pandas as pd
+from sympy import python
 import xgboost as xgboost
 from datasets import DatasetDict, concatenate_datasets, Dataset
 from sklearn.linear_model import LogisticRegression
@@ -19,6 +20,7 @@ from tabpfn import TabPFNClassifier
 
 
 from create_external_datasets import load_train_validation_test
+from ico_config import ICO_LABEL_STRATEGIES, is_metadata_column, apply_ico_label_strategy
 from sklearn.metrics import precision_recall_fscore_support, average_precision_score
 
 datasets.enable_caching()
@@ -104,7 +106,10 @@ def main():
 
                 # Need to replicate exactly tfew cohorts here by following create_external_dataset and tfew code.
                 # 1. Load data as in create_external_datasets to get same splits
-                dataset = load_train_validation_test(args.dataset, data_dir)
+                dataset = load_train_validation_test(args.dataset, data_dir,
+                                                     ico_label_strategy=args.label_strategy)
+                # Strip metadata-only columns before ML training (kept only for analysis)
+                dataset = {k: v[[c for c in v.columns if not is_metadata_column(c)]] for k, v in dataset.items()}
                 if i == 0:
                     print(f"Original columns: {list(dataset['train'].columns)}")
                 dataset = DatasetDict({k: Dataset.from_pandas(v, preserve_index=False) for k, v in dataset.items()})
@@ -490,12 +495,18 @@ def prepare_data(dataset_name, model_name, dataset, enc=None, scale=True):
 
 def read_orig_dataset(orig_data, seed, split):
     # External datasets are not yet shuffled, so do it now
+    # Strip metadata columns before splitting — they are not model features
+    meta_cols = [c for c in orig_data.column_names if is_metadata_column(c)]
+    if meta_cols:
+        orig_data = orig_data.remove_columns(meta_cols)
     data = orig_data.train_test_split(test_size=0.20, seed=seed)
     data2 = data['test'].train_test_split(test_size=0.50, seed=seed)
+    # Build an empty test slice with the correct schema
+    empty_test = data['train'].select([])
     # No validation/test split used for external datasets
     dataset_dict = DatasetDict({'train': data['train'],
                                 'validation': concatenate_datasets([data2['train'], data2['test']]),
-                                'test': Dataset.from_dict({'note': [], 'label': []})})
+                                'test': empty_test})
     orig_data = dataset_dict[split]
 
     # In case dataset has no idx per example, add that here bc manually created ones might not have an idx.
@@ -585,6 +596,14 @@ def parse_args():
         "--dataset",
         type=str
     )
+    parser.add_argument(
+        "--label_strategy",
+        type=str,
+        default="all",
+        choices=list(ICO_LABEL_STRATEGIES.keys()),
+        help="ICO label strategy: 'all' (default), 'high_only' (riskLevel 2&3 = fraud, drop 1), "
+             "'low_only' (riskLevel 1 = fraud, drop 2&3). Ignored for non-ICO datasets.",
+    )
 
     args = parser.parse_args()
 
@@ -658,3 +677,6 @@ def save_model_results(model_name, all_metrics_per_shot, model_params=None,
 if __name__ == '__main__':
    
     main()
+
+    # ML baseline with strict fraud only (riskLevel 2 & 3)
+    # python evaluate_external_dataset.py --dataset ico --label_strategy high_only

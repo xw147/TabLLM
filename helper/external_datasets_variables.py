@@ -665,7 +665,7 @@ ico_feature_names = [
     ('country_combined', 'headquarter country'),
     ('ICODuration_combined', 'ICO duration'),
     ('preICODuration_combined', 'pre-ICO duration'),
-    ('rating_combined', 'rating(1 to 5)'),
+    ('rating_combined', 'rating(1 to 5) by listing platform'),
     ('ERC20_combined', 'ERC20 compliance'),
     ('is_Ethereum_based', 'ethereum-based status'),
     ('token_type', 'token type'),
@@ -695,9 +695,9 @@ ico_feature_names = [
 template_config_ico = {
     'pre': {
         'country_combined': lambda x: x if pd.notna(x) else "not disclosed",
-        'ICODuration_combined': lambda x: f"{int(x)} days" if pd.notna(x) and x > 0 else "not disclosed",
-        'preICODuration_combined': lambda x: f"{int(x)} days" if pd.notna(x) and x > 0 else "not disclosed",
-        'rating_combined': lambda x: f"{x:.2f}" if pd.notna(x) else "not disclosed",
+        'ICODuration_combined': lambda x: f"{int(x)} days" if pd.notna(x) and x > 0 else "missingData",
+        'preICODuration_combined': lambda x: f"{int(x)} days" if pd.notna(x) and x > 0 else "missingData",
+        'rating_combined': lambda x: f"{x:.2f}" if pd.notna(x) else "not rated",
         'price_USD': lambda x: f"${x:.4f}" if pd.notna(x) and x > 0 else "not disclosed",
         'teamSize_combined': lambda x: f"{int(x)} members" if pd.notna(x) and x > 0 else "not disclosed",
         'tokensForSale_combined': lambda x: f"{int(x):,}" if pd.notna(x) and x > 0 else "not disclosed",

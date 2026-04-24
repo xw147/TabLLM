@@ -28,10 +28,14 @@ from helper.note_generator import NoteGenerator
 from helper.note_template import NoteTemplate
 from helper.external_datasets_variables import *
 from helper.preprocess import preprocess
+from ico_config import ICO_METADATA_COLUMNS, ICO_METADATA_PREFIX, ICO_LABEL_STRATEGIES, is_metadata_column, apply_ico_label_strategy
 
 
 logger = logging.getLogger(__name__)
+
+
 # only called inside shuffle_dataset, which only runs when you pass --shuffled.
+# no need to care if use only text or list template
 cat_idx_dict = {
     "car": [0,1,2,3,4,5],
     "diabetes": [],
@@ -84,6 +88,9 @@ def main():
         dataset['train'] = pd.concat([dataset[k] for k in dataset.keys()])
         dataset['validation'] = dataset['validation'].sample(0)
         dataset['test'] = dataset['train'].sample(0)
+        if args.dataset == 'ico':
+            metadata_columns = [c for c in dataset['train'].columns if is_metadata_column(c)]
+            dataset['train'] = dataset['train'].drop(columns=metadata_columns)
         # For each of them generate all feature values
         output_linear_classifier_features(dataset['train'], output_dir, args.dataset)
 
@@ -94,6 +101,8 @@ def main():
 
     # External datasets are now split later
     dataset = pd.concat(list(dataset.values()), ignore_index=True)
+    metadata_columns = [c for c in dataset.columns if is_metadata_column(c)]
+    dataset_for_prompt = dataset.drop(columns=metadata_columns) if metadata_columns else dataset.copy()
 
     # Shuffled: shuffle each feature column separately
     if args.shuffled:
@@ -140,13 +149,14 @@ def main():
                     dataset[c] = ret_value_list
             return dataset
         
-        dataset = shuffle_dataset(dataset)
+        dataset_for_prompt = shuffle_dataset(dataset_for_prompt)
 
-    notes = [NoteGenerator.clean_note(note_generator.substitute(r)) for _, r in dataset.iterrows()]
+    notes = [NoteGenerator.clean_note(note_generator.substitute(r)) for _, r in dataset_for_prompt.iterrows()]
     old_size_notes = len(notes)
     start = 0  # 25000
     end = len(notes)
     notes = notes[start:end]
+    dataset_for_prompt = dataset_for_prompt.iloc[start:end]
     dataset = dataset.iloc[start:end]
     print(f"Only consider dataset range between {start} and {end} (total: {old_size_notes})")
 
@@ -170,7 +180,7 @@ def main():
             return ex
 
         if args.tabletotext:
-            num_features = len(dataset.columns) - 1
+            num_features = len(dataset_for_prompt.columns) - 1
 
             def write_into_table(name, value):
                 example = {}
@@ -209,7 +219,7 @@ def main():
                 return chunks
 
             old_size = len(notes)
-            num_chunks = int(((len(dataset.columns) - 1) / 2.) + 0.5)
+            num_chunks = int(((len(dataset_for_prompt.columns) - 1) / 2.) + 0.5)
             # notes = notes[0:10]
             notes = Dataset.from_dict({'text': list(itertools.chain(*[entry_to_text(n) for n in notes]))})
             assert notes.shape[0] == old_size * num_chunks
@@ -222,15 +232,29 @@ def main():
     for i in range(0, min(10, len(notes))):
         print('----')
         print(notes[i])
-    dataset = Dataset.from_dict({'note': notes, 'label': dataset['label'].to_list()})
+    serialized_data = {'note': notes}
+    if metadata_columns:
+        # ICO: store raw metadata fields (including riskLevel) but NOT a baked binary label.
+        # Label is derived at runtime from riskLevel using the chosen label strategy,
+        # so the serialized file stays strategy-agnostic.
+        for c in metadata_columns:
+            exported_name = c[len(ICO_METADATA_PREFIX):]
+            serialized_data[exported_name] = dataset[c].to_list()
+    else:
+        # All other datasets: bake the label in as usual.
+        serialized_data['label'] = dataset_for_prompt['label'].to_list()
+    dataset = Dataset.from_dict(serialized_data)
 
     if not args.debug:
         logger.info(f"Store generated datasets to {output_dir}/{dataset_name}")
-        logger.info(f"\tn={len(dataset)}, feats={dataset.num_columns}, labels={dict(Counter(dataset['label']))}")
+        if 'label' in dataset.column_names:
+            logger.info(f"\tn={len(dataset)}, feats={dataset.num_columns}, labels={dict(Counter(dataset['label']))}")
+        else:
+            logger.info(f"\tn={len(dataset)}, feats={dataset.num_columns} (label derived at runtime from riskLevel)")
         dataset.save_to_disk(output_dir / dataset_name)
 
 
-def load_train_validation_test(dataset_name, data_dir):
+def load_train_validation_test(dataset_name, data_dir, ico_label_strategy='all'):
     # Load existing data, put into train, validation, test and create label
     def train_validation_test_split(data):
         # Use stratified splitting to maintain class distribution across splits
@@ -388,14 +412,17 @@ def load_train_validation_test(dataset_name, data_dir):
     elif dataset_name == "ico":
         # Load ICO fraud dataset
         dataset = pd.read_csv(data_dir / 'common_features_rowsRemoved8.csv')
+        # Apply label strategy: assigns binary label and drops excluded riskLevel rows.
+        # original_size is measured AFTER filtering so the split assert stays correct.
+        dataset = apply_ico_label_strategy(dataset, ico_label_strategy)
         original_size = len(dataset)
-        # Convert riskLevel to binary: 0 = No Fraud (0), >0 = Fraud (1)
-        dataset['label'] = (dataset['riskLevel'] > 0).astype(int) # this step is correct
-        # print(dataset[['riskLevel', 'label']]) 
-        # Drop non-feature columns: target, IDs, and fraud-only descriptive variables
-        columns_to_drop = ['riskLevel', 'name', 'token_symbol', 'dc_Category', 'dc_EntryDate', 'dc_Summary']
-        dataset = dataset.drop(columns=columns_to_drop)
-        dataset_train, dataset_valid, dataset_test = train_validation_test_split(dataset) # already organise data by three sets split
+        # Move non-feature columns to metadata (prefixed) so they are kept alongside
+        # features but excluded from ML training and LLM prompts.
+        metadata = dataset[ICO_METADATA_COLUMNS].copy()
+        dataset = dataset.drop(columns=ICO_METADATA_COLUMNS)
+        for c in ICO_METADATA_COLUMNS:
+            dataset[ICO_METADATA_PREFIX + c] = metadata[c]
+        dataset_train, dataset_valid, dataset_test = train_validation_test_split(dataset)
         assert len(dataset_train) + len(dataset_valid) + len(dataset_test) == original_size
 
     else:
@@ -419,7 +446,8 @@ def load_train_validation_test(dataset_name, data_dir):
         # 'ico': 36  # for ML features
         # 'ico': 27  # for ML features
     }
-    assert dataset_name in dataset_specs.keys() and len(dataset.columns) == dataset_specs[dataset_name]
+    feature_columns = [c for c in dataset.columns if not is_metadata_column(c)]
+    assert dataset_name in dataset_specs.keys() and len(feature_columns) == dataset_specs[dataset_name]
 
     dataset = {"train": dataset_train, "validation": dataset_valid, "test": dataset_test}
     return dataset
@@ -600,7 +628,7 @@ def parse_args():
 if __name__ == '__main__':
     import sys
     # list template
-    sys.argv = ['create_external_datasets.py', '--dataset', 'ico', '--list']
+    # sys.argv = ['create_external_datasets.py', '--dataset', 'ico', '--list']
     # text template
-    # sys.argv = ['create_external_datasets.py', '--dataset', 'ico']
+    sys.argv = ['create_external_datasets.py', '--dataset', 'ico']
     main()
