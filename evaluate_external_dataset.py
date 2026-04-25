@@ -1,3 +1,7 @@
+# to do:
+# move gpt evaluation into another file
+# currently use all set for metrics calculation, may simulate 80/20 for N random times
+
 import argparse
 from datetime import datetime
 import logging
@@ -16,11 +20,13 @@ import lightgbm as lgb
 from sklearn.metrics import roc_auc_score, average_precision_score, accuracy_score, confusion_matrix, f1_score
 from sklearn.model_selection import StratifiedKFold, GridSearchCV, KFold
 from sklearn.preprocessing import StandardScaler, OrdinalEncoder
+from sklearn.impute import SimpleImputer
 from tabpfn import TabPFNClassifier
 
 
 from create_external_datasets import load_train_validation_test
 from ico_config import ICO_LABEL_STRATEGIES, is_metadata_column, apply_ico_label_strategy
+from path_config import GPT_EVAL_INPUT_CSV, GPT_EVAL_OUTPUT_CSV, DATASETS_DIR
 from sklearn.metrics import precision_recall_fscore_support, average_precision_score
 
 datasets.enable_caching()
@@ -73,35 +79,48 @@ def main():
     # Hijack parameter for running all
     # args_datasets = ['car', 'income', 'heart', 'diabetes', 'blood', 'bank', 'jungle', 'creditg', 'calhousing']
     args_datasets = ['ico']
-    all_results = pd.DataFrame([], index=args_datasets)
-    all_results_sd = pd.DataFrame([], index=args_datasets)
+
+    # ── Configuration: set model and label strategy here ──────────────────────
+    args.model = 'lightgbm'           # choices: 'lr', 'xgboost', 'lightgbm', 'tabpfn', 'gpt3'
+    args.label_strategy = 'all' # choices: 'all', 'high_only', 'low_only'
+    # ──────────────────────────────────────────────────────────────────────────
+
+    models = [args.model]
+    row_keys = [f"{d}_{args.model}" for d in args_datasets]
+    all_results = pd.DataFrame([], index=row_keys)
+    all_results_sd = pd.DataFrame([], index=row_keys)
     all_metrics_per_shot = {}
     for args.dataset in args_datasets:
         # Configuration
-        data_dir = Path("/Users/work/TabLLM/datasets")
-        data_dir = data_dir / args.dataset
+        data_dir = DATASETS_DIR / args.dataset
 
-        models = ['xgboost'] # change the model name here ###########################
-        assert(len(models)) == 1  # For current output only one model is supported
+        # models defined above
         # models = ['output_datasets']
         ts = datetime.now().strftime("-%Y%m%d-%H%M%S")
         # metric = 'roc_auc'  # accuracy
         metric = 'average_precision' # 'auprc', used for hyperparameter tuning
-        num_shots = [4,  8, 16, 32 ]#, 64, 128, 256, 512, 'all'] # 1024, 2048, 4096, 8192, 16384, 50000, 'all']  # ['all']
-        seeds = [42 ]#, 1024, 0, 1, 32]   # , 45, 655, 186, 126, 836]
-        seeded_results = defaultdict(list)
+        num_shots = [4, 8, 16, 32, 64, 128] #, 256, 512, 'all'] # 1024, 2048, 4096, 8192, 16384, 50000, 'all']  # ['all']
+        seeds = [42, 1024, 0, 1, 32]   # , 45, 655, 186, 126, 836]
         if metric == 'roc_auc' and args.dataset == 'car':
             # This computes the roc_auc_score for ovr on macro level:
             # https://scikit-learn.org/stable/modules/generated/sklearn.metrics.roc_auc_score.html
             metric = 'roc_auc_ovr'
         for model in models:
-            all_metrics_per_shot = {}  # Initialize for each model
+            seeded_results = defaultdict(list)  # Reset per model
+
+            # ── GPT-3 / GPT-4o: evaluate directly from output CSV, skip dataset pipeline ──
+            if model == 'gpt3':
+                evaluate_gpt3_from_csv(GPT_EVAL_INPUT_CSV, args.dataset, output_file=GPT_EVAL_OUTPUT_CSV)
+                continue
+            # ────────────────────────────────────────────────────────────────────────────────
+
             # Set ordinal encoding based on model name
             categorical_encoding = 'ordinal' # 'one-hot'
             if model.endswith(' ordinal'):
                 model = model.split(' ordinal', maxsplit=1)[0]
                 categorical_encoding = 'ordinal'
-            print(f"Evaluate dataset {args.dataset} with model {model} and encoding {categorical_encoding}.")
+            label_strategy_info = f", label_strategy='{args.label_strategy}'" if args.dataset == 'ico' else ""
+            print(f"Evaluate dataset {args.dataset} with model {model} and encoding {categorical_encoding}{label_strategy_info}.")
             for i, seed in enumerate(seeds):
 
                 # Need to replicate exactly tfew cohorts here by following create_external_dataset and tfew code.
@@ -115,8 +134,6 @@ def main():
                 dataset = DatasetDict({k: Dataset.from_pandas(v, preserve_index=False) for k, v in dataset.items()})
                 dataset = concatenate_datasets(list(dataset.values()))
                 # 2. Apply method from tfew loading, but skip the data loading from disk (mainly caps validation set)
-                if model == 'gpt3':
-                    dataset = add_gpt3_zero_shot_predictions(dataset, args.dataset, data_dir)
                 dataset = DatasetDict({k: read_orig_dataset(dataset, seed, k) for k in ['train', 'validation', 'test']})
 
                 # Prepare data specifically for model and dataset, for this back to pandas again
@@ -133,12 +150,20 @@ def main():
                 dataset_test = dataset['test'].remove_columns(['idx'])
 
                 for num_shot in num_shots:
-                    if num_shot not in all_metrics_per_shot:
-                        all_metrics_per_shot[num_shot] = []  # Initialize list for each shot size
-                    # Store the original num_shot for metrics tracking
+                    # Store the original num_shot for output file naming
                     original_num_shot = num_shot
                     if num_shot == 'all' and model == 'tabpfn':
                         num_shot = 1024  # This is the expected maximum input size of tabpfn
+
+                    # Skip if this (model, dataset, num_shot, seed, label_strategy) run already exists
+                    run_path = get_run_dir(model, args.dataset, original_num_shot, seed, args.label_strategy)
+                    if (run_path / "dev_scores.json").exists():
+                        print(f"\tSkipping (already exists): {run_path}/dev_scores.json")
+                        # Still need to populate seeded_results for summary printing
+                        with open(run_path / "dev_scores.json") as _f:
+                            _s = json.load(_f)
+                        seeded_results[original_num_shot].append(_s["AUC"])
+                        continue
                     if num_shot == 'all':
                         # Just shuffle dataset and flatten indices for better performance
                         dataset_train = (dataset['train'].remove_columns(['idx'])).shuffle(seed)
@@ -202,8 +227,7 @@ def main():
                     if model != 'gpt3':
                         primary_metric, all_metrics = evaluate_model(seed, model, metric, parameters[model], 
                                                                     X_train, y_train, X_valid, y_valid, X_test, y_test)
-                        # Store all metrics for this shot/seed combination
-                        all_metrics_per_shot[original_num_shot].append(all_metrics)
+                        save_run_results(model, args.dataset, original_num_shot, seed, args.label_strategy, all_metrics, len(y_test))
                         results = primary_metric  # For backward compatibility
                     else:
                         # Handle GPT-3 case as before
@@ -218,17 +242,16 @@ def main():
                         tn, fp, fn, tp = confusion_matrix(y_test, y_pred).ravel()
                         specificity = tn / (tn + fp) if (tn + fp) > 0 else 0.0
                         auroc = roc_auc_score(y_test, y_proba)
-                        micro_f1 = f1_score(y_test, y_pred, average='micro', zero_division=0)
+                        f1_binary = f1_score(y_test, y_pred, average='binary', zero_division=0)
                         macro_f1 = f1_score(y_test, y_pred, average='macro', zero_division=0)
                         acc = accuracy_score(y_test, y_pred)
                         all_metrics = {
                         'precision': precision,
                         'recall': recall,
-                        'f1_score': f1,
+                        'f1_binary': f1_binary,
                         'auprc': auprc,
                         'specificity': specificity,
                         'auroc': auroc,
-                        'micro_f1': micro_f1,
                         'macro_f1': macro_f1,
                         'accuracy': acc
                         }
@@ -240,37 +263,20 @@ def main():
                         elif metric == 'average_precision':
                             results = average_precision_score(y_test, y_proba)
 
-                        # calculate other metric to get all metrics
-                        all_metrics_per_shot[original_num_shot].append(all_metrics)
+                        save_run_results(model, args.dataset, original_num_shot, seed, args.label_strategy, all_metrics, len(y_test))
 
                     seeded_results[num_shot] = seeded_results[num_shot] + [results]
 
-            # Save results after all experiments for this model are completed
-            # if model != 'gpt3' and model != 'output_datasets':
-            if model != 'output_datasets':
-                model_params = parameters[model] if model in parameters else {}
-                dataset_info = {
-                    "dataset_name": args.dataset,
-                    "n_features": X_train.shape[1] if 'X_train' in locals() else None,
-                    "classification_type": "binary"
-                }
-                
-                save_model_results(
-                    model_name=model,
-                    all_metrics_per_shot=all_metrics_per_shot,
-                    model_params=model_params,
-                    dataset_info=dataset_info,
-                    output_file=f"{args.dataset}_{model}_results.json"
-                )
-
-            # Collect outputs per dataset
+            # Collect outputs per dataset+model
+            row_key = f"{args.dataset}_{model}"
             for k, v in seeded_results.items():
-                all_results.loc[args.dataset, str(k)] = round(float(np.mean(v)), 2)
-                all_results_sd.loc[args.dataset, str(k)] = round(float(np.std(v)), 2)
+                all_results.loc[row_key, str(k)] = round(float(np.mean(v)), 2)
+                all_results_sd.loc[row_key, str(k)] = round(float(np.std(v)), 2)
 
     
-    # Print the collective results for one model
-    print(f"\nRow-wise results for shots: {list(all_results.columns)}.")
+    # Print the collective results (one row per dataset+model combination)
+    label_tag = f" [label_strategy={args.label_strategy}]" if args_datasets == ['ico'] else ""
+    print(f"\nRow-wise results{label_tag} for shots: {list(all_results.columns)}.")
     for i, row in all_results.iterrows():
         print(i, end=': ')
         for j in range(0, len(row)):
@@ -319,18 +325,17 @@ def evaluate_model(seed, model, metric, parameters, X_train, y_train, X_valid, y
         tn, fp, fn, tp = confusion_matrix(y, y_pred).ravel()
         specificity = tn / (tn + fp) if (tn + fp) > 0 else 0.0
         auroc = roc_auc_score(y, y_proba)
-        micro_f1 = f1_score(y, y_pred, average='micro', zero_division=0)
+        f1_binary = f1_score(y, y_pred, average='binary', zero_division=0)
         macro_f1 = f1_score(y, y_pred, average='macro', zero_division=0)
         acc = accuracy_score(y, y_pred)
         
         all_metrics = {
             'precision': precision,
             'recall': recall,
-            'f1_score': f1,
+            'f1_binary': f1_binary,
             'auprc': auprc,
             'specificity': specificity,
             'auroc': auroc,
-            'micro_f1': micro_f1,
             'macro_f1': macro_f1,
             'accuracy': acc
         }
@@ -340,8 +345,6 @@ def evaluate_model(seed, model, metric, parameters, X_train, y_train, X_valid, y
             return all_metrics['precision']
         elif metric == 'recall':
             return all_metrics['recall']
-        elif metric == 'f1_score':
-            return all_metrics['f1_score']
         elif metric == 'average_precision':
             return all_metrics['auprc']
         else:
@@ -388,18 +391,17 @@ def evaluate_model(seed, model, metric, parameters, X_train, y_train, X_valid, y
     tn, fp, fn, tp = confusion_matrix(y_test, y_pred).ravel()
     specificity = tn / (tn + fp) if (tn + fp) > 0 else 0.0
     auroc = roc_auc_score(y_test, y_proba)
-    micro_f1 = f1_score(y_test, y_pred, average='micro', zero_division=0)
+    f1_binary = f1_score(y_test, y_pred, average='binary', zero_division=0)
     macro_f1 = f1_score(y_test, y_pred, average='macro', zero_division=0)
     acc = accuracy_score(y_test, y_pred)
     
     all_metrics = {
         'precision': precision,
         'recall': recall,
-        'f1_score': f1,
+        'f1_binary': f1_binary,
         'auprc': auprc,
         'specificity': specificity,
         'auroc': auroc,
-        'micro_f1': micro_f1,
         'macro_f1': macro_f1,
         'accuracy': acc
     }
@@ -460,6 +462,15 @@ def prepare_data(dataset_name, model_name, dataset, enc=None, scale=True):
         print(f"Found {len(dataset['train'].columns)}, tabpfn can only handle 100, remove {len(sparse_cols)} sparsest.")
         dataset['train'].drop(columns=dataset['train'].columns[sparse_cols], inplace=True)
 
+    # Impute NaNs with column median — only for lr (which does not handle NaN natively).
+    all_feature_cols = [c for c in dataset['train'].columns if c not in ['idx', 'label']]
+    if model_name == 'lr' and dataset['train'][all_feature_cols].isnull().any().any():
+        imputer = SimpleImputer(strategy='median')
+        imputer.fit(dataset['train'][all_feature_cols])
+        dataset['train'][all_feature_cols] = imputer.transform(dataset['train'][all_feature_cols])
+    else:
+        imputer = None
+
     if scale and len(numeric_columns) > 0:
         # z-normalization of numerical columns
         scaler = StandardScaler()
@@ -470,6 +481,9 @@ def prepare_data(dataset_name, model_name, dataset, enc=None, scale=True):
         # Replicate steps performed on training data
         data = dataset[split]
         data = encode_categorical(data)
+        if imputer is not None and data.shape[0] > 0:
+            imp_cols = [c for c in all_feature_cols if c in data.columns]
+            data[imp_cols] = imputer.transform(data[imp_cols])
         if scale and len(numeric_columns) > 0 and data.shape[0] > 0:
             # z-normalization of numerical columns
             data[numeric_columns] = scaler.transform(data[numeric_columns])
@@ -511,7 +525,15 @@ def read_orig_dataset(orig_data, seed, split):
 
     # In case dataset has no idx per example, add that here bc manually created ones might not have an idx.
     if 'idx' not in orig_data.column_names:
-        orig_data = orig_data.add_column(name='idx', column=range(0, orig_data.num_rows))
+        n = orig_data.num_rows
+        if n > 0:
+            orig_data = orig_data.add_column(name='idx', column=list(range(n)))
+        else:
+            # add_column fails on 0-row datasets in this version of datasets;
+            # reconstruct via from_dict which handles empty tables correctly.
+            schema = {col: [] for col in orig_data.column_names}
+            schema['idx'] = []
+            orig_data = datasets.Dataset.from_dict(schema)
 
     return orig_data
 
@@ -559,25 +581,6 @@ def sample_few_shot_data(orig_data, num_shot, few_shot_random_seed):
     return selected_data
 
 
-def add_gpt3_zero_shot_predictions(dataset, task, data_dir):
-    gpt3_output = pd.read_csv(data_dir.parent / 'gpt-3-zero-shot' / ('outputs-' + task + '.csv'))
-    if task == 'car': # may need to add gpt3 label, etc.
-        splitted_predictions = [[], [], [], []]
-        for p in gpt3_output['output0'].to_list():
-            preds = [float(x) for x in p.split(', ')]
-            preds = [p / sum(preds) for p in preds]
-            for i, k in enumerate(preds):
-                splitted_predictions[i].append(k)
-        for i, l in enumerate(splitted_predictions):
-            dataset = dataset.add_column('gpt3_output' + str(i), l)
-        print('')
-    else:
-       
-        dataset = dataset.add_column('gpt3_pred_label', gpt3_output['pred_label'])
-        dataset = dataset.add_column('gpt3_pos_prob', gpt3_output['pos_prob'])
-
-    return dataset
-
 
 def result_str(scores):
     if len(scores) > 1:
@@ -596,14 +599,6 @@ def parse_args():
         "--dataset",
         type=str
     )
-    parser.add_argument(
-        "--label_strategy",
-        type=str,
-        default="all",
-        choices=list(ICO_LABEL_STRATEGIES.keys()),
-        help="ICO label strategy: 'all' (default), 'high_only' (riskLevel 2&3 = fraud, drop 1), "
-             "'low_only' (riskLevel 1 = fraud, drop 2&3). Ignored for non-ICO datasets.",
-    )
 
     args = parser.parse_args()
 
@@ -612,67 +607,119 @@ def parse_args():
 
 
 
-def save_model_results(model_name, all_metrics_per_shot, model_params=None, 
-                      dataset_info=None, output_file=None):
+def evaluate_gpt3_from_csv(gpt_csv_path, dataset_name, output_file=None):
     """
-    Save ML model results to JSON file for binary classification
-    
-    Args:
-        model_name: Name of the ML model
-        all_metrics_per_shot: Dictionary with shot sizes as keys and list of metric dictionaries as values
-                             e.g., {2: [{'precision': 0.8, 'recall': 0.7, ...}, ...], 4: [...], ...}
-        model_params: Dictionary of model hyperparameters
-        dataset_info: Dictionary with dataset information
-        output_file: Path to save JSON file
+    Evaluate GPT predictions from a pre-computed output CSV.
+
+    Derives ground truth directly from the 'riskLevel' column in the CSV for
+    all three ICO label strategies ('all', 'high_only', 'low_only'), so that
+    row alignment between the GPT run and the raw dataset is not required.
+
+    Required CSV columns: riskLevel, pred_label, pos_prob
+
+    Saves a summary CSV with one row per strategy.
+    Returns the summary DataFrame.
     """
-    
-    # Process metrics for each shot size
-    processed_results = {}
-    metric_names = ['precision', 'recall', 'f1_score', 'auprc', 'specificity', 'auroc', 'micro_f1', 'macro_f1', 'accuracy']
-    
-    for shot_size, metrics_list in all_metrics_per_shot.items():
-        processed_results[str(shot_size)] = {}
-        
-        # Calculate mean and std for each metric
-        for metric_name in metric_names:
-            values = [m[metric_name] for m in metrics_list]
-            processed_results[str(shot_size)][metric_name] = {
-                "mean": float(np.mean(values)),
-                "std": float(np.std(values)),
-                "raw_values": [float(v) for v in values],
-                "count": len(values)
-            }
-    
-    # Create results structure
-    results = {
-        "model_info": {
-            "model_name": model_name,
-            "model_type": "binary_classification",
-            "hyperparameters": model_params or {},
-            "training_time": datetime.now().isoformat()
-        },
-        "experimental_setup": dataset_info or {},
-        "results_by_shot_size": processed_results,
-        "summary_statistics": {
-            "metric_names": metric_names,
-            "shot_sizes": list(all_metrics_per_shot.keys()),
-            "seeds_per_shot": len(list(all_metrics_per_shot.values())[0]) if all_metrics_per_shot else 0
-        },
-        "metadata": {
-            "created_date": datetime.now().strftime("%Y-%m-%d"),
-            "experiment_id": f"exp_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    import os
+
+    df = pd.read_csv(gpt_csv_path)
+
+    required_cols = {'riskLevel', 'pred_label', 'pos_prob'}
+    missing = required_cols - set(df.columns)
+    if missing:
+        raise ValueError(f"GPT output CSV missing required columns: {missing}")
+
+    # Ensure numeric types
+    df['riskLevel'] = pd.to_numeric(df['riskLevel'], errors='coerce')
+    df['pred_label'] = pd.to_numeric(df['pred_label'], errors='coerce').astype(int)
+    df['pos_prob'] = pd.to_numeric(df['pos_prob'], errors='coerce')
+
+    rows = []
+    for strategy_name, strategy in ICO_LABEL_STRATEGIES.items():
+        df_strat = df.copy()
+        # Drop rows whose riskLevel is excluded by this strategy
+        if strategy['drop']:
+            df_strat = df_strat[~df_strat['riskLevel'].isin(strategy['drop'])].reset_index(drop=True)
+
+        y_test = df_strat['riskLevel'].isin(strategy['positive']).astype(int).values
+        y_pred = df_strat['pred_label'].values
+        y_proba = df_strat['pos_prob'].values
+
+        n_total = len(y_test)
+        n_pos = int(y_test.sum())
+        n_neg = n_total - n_pos
+        print(f"\n[gpt3] strategy={strategy_name}  n={n_total}  pos={n_pos}  neg={n_neg}")
+
+        precision, recall, f1, _ = precision_recall_fscore_support(y_test, y_pred, average='binary', zero_division=0)
+        auprc = average_precision_score(y_test, y_proba)
+        tn, fp, fn, tp = confusion_matrix(y_test, y_pred).ravel()
+        specificity = tn / (tn + fp) if (tn + fp) > 0 else 0.0
+        auroc = roc_auc_score(y_test, y_proba)
+        f1_binary = f1_score(y_test, y_pred, average='binary', zero_division=0)
+        macro_f1 = f1_score(y_test, y_pred, average='macro', zero_division=0)
+        acc = accuracy_score(y_test, y_pred)
+
+        row = {
+            'dataset': dataset_name,
+            'strategy': strategy_name,
+            'n_total': n_total,
+            'n_positive': n_pos,
+            'n_negative': n_neg,
+            'precision': round(precision, 4),
+            'recall': round(recall, 4),
+            'f1_score': round(f1, 4),
+            'auprc': round(auprc, 4),
+            'specificity': round(specificity, 4),
+            'auroc': round(auroc, 4),
+            'f1_binary': round(f1_binary, 4),
+            'macro_f1': round(macro_f1, 4),
+            'accuracy': round(acc, 4),
         }
-    }
-    
-    # Save to file
+        for k, v in row.items():
+            print(f"  {k}: {v}")
+        rows.append(row)
+
+    summary_df = pd.DataFrame(rows)
+
     if output_file is None:
-        output_file = f"{model_name.lower().replace(' ', '_')}_results.json"
-    
-    with open(output_file, 'w') as f:
-        json.dump(results, f, indent=2)
-    
-    print(f"Results saved to {output_file}")
-    return results
+        ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+        output_file = f"output/{dataset_name}_gpt3_metrics_summary_{ts}.csv"
+    os.makedirs(os.path.dirname(output_file) if os.path.dirname(output_file) else '.', exist_ok=True)
+    summary_df.to_csv(output_file, index=False)
+    print(f"\nGPT metrics summary saved to {output_file}")
+    return summary_df
+
+
+def get_run_dir(model, dataset, num_shot, seed, label_strategy):
+    """Return the Path for a run's output directory (no side effects)."""
+    label_strategy_tag = label_strategy if dataset == 'ico' else 'default'
+    return Path("exp_out") / f"{model}_{dataset}_numshot{num_shot}_seed{seed}_{label_strategy_tag}"
+
+
+def save_run_results(model, dataset, num_shot, seed, label_strategy, all_metrics, num_test):
+    """Save per-run results in t-few dev_scores.json format.
+
+    Output path: exp_out/{model}_{dataset}_numshot{N}_seed{S}_{label_strategy}/dev_scores.json
+
+    This mirrors the t-few experiment output structure so get_result_table.py can
+    aggregate results across seeds using the same logic for both t-few and ML models.
+    """
+    run_dir = get_run_dir(model, dataset, num_shot, seed, label_strategy)
+    run_dir.mkdir(parents=True, exist_ok=True)
+    scores = {
+        "AUC":         float(all_metrics["auroc"]),
+        "PR":          float(all_metrics["auprc"]),
+        "macro_f1":    float(all_metrics["macro_f1"]),
+        "f1_binary":   float(all_metrics["f1_binary"]),
+        "sensitivity": float(all_metrics["recall"]),
+        "specificity": float(all_metrics["specificity"]),
+        "precision":   float(all_metrics["precision"]),
+        "accuracy":    float(all_metrics["accuracy"]),
+        "num":         int(num_test),
+    }
+    with open(run_dir / "dev_scores.json", "w") as f:
+        json.dump(scores, f)
+    print(f"\tSaved run results → {run_dir}/dev_scores.json")
 
 if __name__ == '__main__':
    

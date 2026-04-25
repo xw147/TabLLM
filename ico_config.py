@@ -1,8 +1,11 @@
 # ICO dataset configuration — standalone, no heavy dependencies.
 # Copy this file into any project that needs to work with ICO label strategies.
 
-# Columns in the raw ICO CSV that are metadata (not features for the LLM/model).
-ICO_METADATA_COLUMNS = ['riskLevel', 'name', 'token_symbol', 'dc_Category', 'dc_EntryDate', 'dc_Summary']
+# All columns in the raw ICO CSV that are NOT model/LLM features.
+# These are moved out of the feature set (prefixed with ICO_METADATA_PREFIX) during serialization
+# and saved into the Arrow file.
+ICO_METADATA_COLUMNS = ['riskLevel', 'name', 'token_symbol']
+
 ICO_METADATA_PREFIX = 'meta_'
 
 # Label strategy definitions for the ICO dataset.

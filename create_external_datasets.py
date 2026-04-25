@@ -2,6 +2,7 @@ import argparse
 import itertools
 import logging
 import os
+from path_config import DATASETS_DIR, DATASETS_SERIALIZED_DIR
 import random
 import re
 import traceback
@@ -59,10 +60,9 @@ def main():
     logging.basicConfig(level=logging.INFO)
 
     # Configuration
-    data_dir = Path("/Users/work/TabLLM/datasets")
-    data_dir = data_dir / args.dataset
+    data_dir = DATASETS_DIR / args.dataset
     temp_output = 'dataset-generation-' + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    output_dir = Path("/Users/work/TabLLM/datasets_serialized") / temp_output
+    output_dir = DATASETS_SERIALIZED_DIR / temp_output
     if not args.debug:
         os.mkdir(output_dir)
     logger.info(f"Generate dataset {args.dataset}.")
@@ -239,7 +239,11 @@ def main():
         # so the serialized file stays strategy-agnostic.
         for c in metadata_columns:
             exported_name = c[len(ICO_METADATA_PREFIX):]
-            serialized_data[exported_name] = dataset[c].to_list()
+            col = dataset[c]
+            # Arrow cannot store float NaN in a string column; fill with empty string.
+            if col.dtype == object:
+                col = col.fillna('')
+            serialized_data[exported_name] = col.to_list()
     else:
         # All other datasets: bake the label in as usual.
         serialized_data['label'] = dataset_for_prompt['label'].to_list()

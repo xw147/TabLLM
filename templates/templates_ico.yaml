@@ -6,68 +6,18 @@ templates:
     name: ico_fraud_detection
     id: ico-fraud-classification-001
     reference: 'ICO Fraud Classification using TabLLM'
-    answer_choices: 'No ||| Yes' # No: true_label 0; Yes: true_label 1
+    answer_choices: 'No ||| Yes' # No: label 0; Yes: label 1
     jinja: '{{note}}
       Does this ICO project exhibit signs of fraud risk? Yes or No?  
       Answer using exactly one word: 
       |||
-      {{ answer_choices[true_label] }}' # answer choices are only used in evluation later, not in the prompt
+      {{ answer_choices[label] }}' 
+      # answer choices are only used in evaluation later, not in the prompt
+      # 'label' here is the grouth truth label for each sample
     metadata: !TemplateMetadata
       choices_in_prompt: true
-      metrics: ['auprc','f1', 'precision', 'recall', 'specificity', 'auroc', 'micro_f1', 'macro_f1', 'accuracy']
+      metrics: ['auprc','f1', 'precision', 'recall', 'specificity', 'auroc', 'f1_binary', 'macro_f1', 'accuracy']
       original_task: true
 
 
-  # 🔹 New improved prompt 
-  ico-fraud-classification-structured: !Template
-    name: ico_fraud_detection_misconduct
-    id: ico-fraud-classification-002
-    reference: 'ICO Fraud Classification using TabLLM'
-    answer_choices: 'No ||| Yes'
-    jinja: '{{note}}
-      
-      
-      You are evaluating whether an ICO project exhibits signs of operational misconduct.
-
-      Definition:
-      Operational misconduct refers to patterns consistent with intentional deception in marketing signals.
-      Poor business prospects alone do NOT constitute misconduct.
-
-      Guidelines:
-      - Only answer "Yes" if there are strong and credible signals suggesting intentional deception.
-      - Missing information or weak fundamentals alone are NOT sufficient.
-      - If the evidence is weak or ambiguous, answer "No".
-
-      Question:
-      Does this ICO project exhibit signs of operational misconduct?
-
-      Answer (Yes or No):
-      |||
-      {{ answer_choices[true_label] }}'
-    metadata: !TemplateMetadata
-      choices_in_prompt: true
-      metrics: ['auprc','f1', 'precision', 'recall', 'specificity', 'auroc', 'micro_f1', 'macro_f1', 'accuracy']
-      original_task: true
-
-
- # Used improved prompt 
-dataset: ico 
-templates:
-
-  ico-fraud-classification-fraud: !Template
-    name: ico_fraud_detection_guide
-    id: ico-fraud-classification-003
-    reference: 'ICO Fraud Classification using TabLLM (fraud wording)'
-    answer_choices: 'No ||| Yes' # No: true_label 0; Yes: true_label 1
-    jinja: '{{note}}
-      
-      You are evaluating whether an ICO project shows signs of fraud.
-      Fraud refers to potential scam, deceptive behaviour, or misleading claims. 
-      Based on the information given, does this ICO project exhibit signs of fraud?
-      Answer (Yes or No):
-      |||
-      {{ answer_choices[true_label] }}'
-    metadata: !TemplateMetadata
-      choices_in_prompt: true
-      metrics: ['auprc','f1', 'precision', 'recall']
-      original_task: true
+  

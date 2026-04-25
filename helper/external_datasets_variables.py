@@ -657,8 +657,7 @@ template_config_wine_list_shuffled = template_config_wine_list
 # ico (ICO Fraud Classification)
 ########################################################################################################################
 # ICO fraud classification dataset with various features related to Initial Coin Offerings
-# Note: riskLevel is the target variable (>1 = fraud), name_check/token_check are IDs, 
-# dc_Category/dc_EntryDate/dc_Summary are fraud-only descriptive variables
+# Note: riskLevel is the target variable (>1 = fraud), name/token_symbol are IDs
 
 # Only include actual features for training (exclude target, IDs, and fraud-only descriptive variables)
 ico_feature_names = [

@@ -1,25 +1,33 @@
 """
 Generate summary CSV tables from experiment results.
 
-Reads results from:
-  1. evaluate_external_dataset.py JSON files ({dataset}_{model}_results.json)
-  2. t-few experiment outputs (exp_out/{exp_name}/dev_scores.json)
+Reads results from exp_out/{exp_name}/dev_scores.json, which is produced by
+both evaluate_external_dataset.py (ML models: lr, xgboost, lightgbm, …) and
+the t-few training pipeline.
+
+Folder naming convention (ML models):
+  exp_out/{model}_{dataset}_numshot{N}_seed{S}_{label_strategy}/dev_scores.json
+  e.g. exp_out/lr_ico_numshot4_seed42_all/dev_scores.json
+
+Folder naming convention (t-few):
+  exp_out/{model}_{dataset}_numshot{N}_seed{S}_{spec}/dev_scores.json
+  e.g. exp_out/t03b_ico_numshot4_seed42_ia3_pretrained100k/dev_scores.json
 
 Usage:
-  # Summarize all result JSON files in current directory
-  python get_result_table.py
+  # Summarise ML runs for lr with label strategy 'all'
+  python get_result_table.py -e "lr_ico_*_all"
 
-  # Specify result files or glob patterns
-  python get_result_table.py -f "ico_tabpfn_results.json" "ico_lr_results.json"
+  # Summarise t-few runs
+  python get_result_table.py -e "t03b_ico_*_ia3_pretrained100k"
 
-  # Include t-few experiment results
-  python get_result_table.py --tfew -e "t03b_ico_*_ia3_pretrained100k"
+  # Multiple experiment patterns (one row per pattern)
+  python get_result_table.py -e "lr_ico_*_all" "xgboost_ico_*_all" "t03b_ico_*_ia3_pretrained100k"
 
-  # Choose which metrics to display (default: all)
-  python get_result_table.py -m auprc auroc f1_score accuracy
+  # Choose which metric to report (default: AUC / auroc)
+  python get_result_table.py -e "lr_ico_*_all" -m auroc auprc macro_f1 accuracy
 
   # Custom output file
-  python get_result_table.py -o my_summary.csv
+  python get_result_table.py -e "lr_ico_*_all" -o my_summary.csv
 """
 
 import argparse
@@ -27,27 +35,27 @@ import json
 import os
 from glob import glob
 from collections import defaultdict
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 
 METRIC_NAMES = [
-    'precision', 'recall', 'f1_score', 'auprc',
-    'specificity', 'auroc', 'micro_f1', 'macro_f1', 'accuracy'
+    'precision', 'recall', 'f1_binary', 'auprc',
+    'specificity', 'auroc', 'macro_f1', 'accuracy'
 ]
 
-# Mapping from t-few dev_scores.json keys to our unified metric names
+# Mapping from dev_scores.json keys → unified internal metric names.
+# Covers both ML model output (AUC, PR, sensitivity, …) and t-few output.
 TFEW_METRIC_MAP = {
     'precision': 'precision',
     'recall': 'recall',
     'sensitivity': 'recall',       # sensitivity == recall
-    'f1': 'f1_score',
     'PR': 'auprc',
     'AUC': 'auroc',
     'specificity': 'specificity',
-    'micro_f1': 'micro_f1',
+    'f1_binary': 'f1_binary',
+    'micro_f1': 'f1_binary',
     'macro_f1': 'macro_f1',
     'accuracy': 'accuracy',
 }
@@ -58,37 +66,15 @@ def fmt(mean, std):
     return f"{mean:.2f} ({std:.2f})"
 
 
-def load_evaluate_results(file_path):
-    """
-    Load results from evaluate_external_dataset.py JSON output.
-    Returns dict: {shot_size: {metric: {mean, std, raw_values}}}
-    """
-    with open(file_path) as f:
-        data = json.load(f)
-
-    model_name = data.get("model_info", {}).get("model_name", Path(file_path).stem)
-    dataset_name = data.get("experimental_setup", {}).get("dataset_name", "unknown")
-    results_by_shot = data.get("results_by_shot_size", {})
-
-    rows = {}
-    for shot_str, metrics in results_by_shot.items():
-        shot_label = shot_str
-        rows[shot_label] = {}
-        for metric_name in METRIC_NAMES:
-            if metric_name in metrics:
-                m = metrics[metric_name]
-                rows[shot_label][metric_name] = {
-                    'mean': m['mean'],
-                    'std': m['std'],
-                    'raw_values': m.get('raw_values', []),
-                }
-    return model_name, dataset_name, rows
-
-
 def load_tfew_results(exp_name_template, exp_out_dir="exp_out"):
     """
-    Load results from t-few dev_scores.json files matching a glob pattern.
-    Groups by dataset+numshot across seeds, returns same structure as load_evaluate_results.
+    Load results from dev_scores.json files matching a glob pattern.
+
+    Works for both ML models (lr, xgboost, lightgbm, …) and t-few runs —
+    both write the same dev_scores.json format.
+
+    Folder naming: {model}_{dataset}_numshot{N}_seed{S}_{...}
+    Groups values by numshot across seeds and returns mean/std.
     """
     pattern = os.path.join(exp_out_dir, exp_name_template, "dev_scores.json")
     all_files = glob(pattern)
@@ -183,21 +169,14 @@ def build_summary_table(all_experiments, metrics_to_show=None):
 def main():
     parser = argparse.ArgumentParser(description="Generate summary CSV from experiment results.")
     parser.add_argument(
-        "-f", "--files", nargs="*", default=None,
-        help="Result JSON files from evaluate_external_dataset.py. "
-             "If not specified, auto-discovers *_results.json in current directory."
-    )
-    parser.add_argument(
-        "--tfew", action="store_true",
-        help="Also include t-few experiment results."
-    )
-    parser.add_argument(
-        "-e", "--exp_name_templates", nargs="*", default=None,
-        help="t-few experiment name glob patterns (e.g. 't03b_ico_*_ia3_pretrained100k')."
+        "-e", "--exp_name_templates", nargs="+", required=True,
+        help="Experiment name glob patterns matching folders under exp_out/. "
+             "Each pattern produces one row in the table. "
+             "Examples: 'lr_ico_*_all'  'xgboost_ico_*_high_only'  't03b_ico_*_ia3_pretrained100k'"
     )
     parser.add_argument(
         "--exp_out_dir", default="exp_out",
-        help="Directory containing t-few experiment outputs (default: exp_out)."
+        help="Directory containing experiment outputs (default: exp_out)."
     )
     parser.add_argument(
         "-m", "--metrics", nargs="*", default=None,
@@ -212,31 +191,14 @@ def main():
     metrics_to_show = args.metrics if args.metrics else METRIC_NAMES
 
     all_experiments = []
-
-    # 1. Load evaluate_external_dataset.py results
-    if args.files is not None:
-        result_files = args.files
-    else:
-        result_files = sorted(glob("*_results.json"))
-
-    for fpath in result_files:
-        if not os.path.exists(fpath):
-            print(f"Warning: File not found: {fpath}")
-            continue
-        print(f"Loading: {fpath}")
-        label, dataset_name, rows = load_evaluate_results(fpath)
-        all_experiments.append((f"{dataset_name}_{label}", dataset_name, rows))
-
-    # 2. Load t-few results
-    if args.tfew and args.exp_name_templates:
-        for tmpl in args.exp_name_templates:
-            print(f"Loading t-few: {tmpl}")
-            label, dataset_name, rows = load_tfew_results(tmpl, args.exp_out_dir)
-            if rows:
-                all_experiments.append((label, dataset_name, rows))
+    for tmpl in args.exp_name_templates:
+        print(f"Loading: {tmpl}")
+        label, dataset_name, rows = load_tfew_results(tmpl, args.exp_out_dir)
+        if rows:
+            all_experiments.append((label, dataset_name, rows))
 
     if not all_experiments:
-        print("No results found. Provide --files or place *_results.json in the current directory.")
+        print("No results found. Check that exp_out/ contains matching folders with dev_scores.json.")
         return
 
     # Build tables

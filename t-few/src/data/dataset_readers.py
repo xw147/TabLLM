@@ -327,7 +327,7 @@ class CustomCategoricalReader(BaseDatasetReader):
 
         micro_f1 = f1_score(accumulated['label'], accumulated['prediction'], average='micro')
         macro_f1 = f1_score(accumulated['label'], accumulated['prediction'], average='macro')
-        metrics = {'AUC': roc_auc, 'PR': pr_auc, 'micro_f1': micro_f1, 'macro_f1': macro_f1,  **metrics}
+        metrics = {'AUC': roc_auc, 'PR': pr_auc, 'f1_binary': micro_f1, 'macro_f1': macro_f1,  **metrics}
         # Also record number of instances evaluated
         metrics = {**metrics, 'num': len(accumulated['prediction'])}
 
@@ -780,7 +780,6 @@ class ICOCategoricalReader(CustomCategoricalReader):
             precision = precision_score(accumulated['label'], accumulated['prediction'], average='binary')
             recall = recall_score(accumulated['label'], accumulated['prediction'], average='binary')
             f1_binary = f1_score(accumulated['label'], accumulated['prediction'], average='binary')
-            micro_f1 = f1_score(accumulated['label'], accumulated['prediction'], average='micro')
             macro_f1 = f1_score(accumulated['label'], accumulated['prediction'], average='macro')
             acc = accuracy_score(accumulated['label'], accumulated['prediction'])
             
@@ -798,7 +797,7 @@ class ICOCategoricalReader(CustomCategoricalReader):
                 'specificity': specificity,
                 'auroc': auroc,
                 'auprc': pr_auc,
-                'micro_f1': micro_f1,
+                'f1_binary': f1_binary,
                 'macro_f1': macro_f1,
                 'accuracy': acc,
                 'num': len(accumulated['prediction'])
@@ -808,7 +807,7 @@ class ICOCategoricalReader(CustomCategoricalReader):
             precision_macro = precision_score(accumulated['label'], accumulated['prediction'], average='macro')
             recall_macro = recall_score(accumulated['label'], accumulated['prediction'], average='macro')
             f1_macro = f1_score(accumulated['label'], accumulated['prediction'], average='macro')
-            micro_f1 = f1_score(accumulated['label'], accumulated['prediction'], average='micro')
+            micro_f1 = f1_score(accumulated['label'], accumulated['prediction'], average='binary')
             acc = accuracy_score(accumulated['label'], accumulated['prediction'])
             
             probs = [p for p in accumulated['probabilities']]
@@ -821,7 +820,7 @@ class ICOCategoricalReader(CustomCategoricalReader):
                 'specificity': 0.0,
                 'auroc': auroc,
                 'auprc': 0.0,
-                'micro_f1': micro_f1,
+                'f1_binary': micro_f1,
                 'macro_f1': f1_macro,
                 'accuracy': acc,
                 'num': len(accumulated['prediction'])

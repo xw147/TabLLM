@@ -17,6 +17,7 @@ import time
 import pandas as pd
 from dotenv import load_dotenv
 from ico_config import ICO_LABEL_STRATEGIES
+from path_config import get_template_path, ICO_SERIALIZED_DIR
 
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -143,7 +144,7 @@ def post_request(example, model):
             "temperature": 0,
             "max_tokens": 1,
             "logprobs": True,  # Enable logprobs for probability calculation
-            "top_logprobs": 10  # Get top 10 logprobs for token variants
+            "top_logprobs": 5  # Match GPT-3 logprobs:5; sufficient for binary Yes/No
         }
         response = requests.post(url, headers=headers, json=data).json()
         
@@ -166,8 +167,10 @@ def post_request(example, model):
         
         if content and len(content) > 0:
             # Get top logprobs for the first (and only) token
-            top_logprobs_dict = content[0].get("top_logprobs", [{}])[0]
-            
+            # top_logprobs is a list of {token, logprob, bytes} objects — build a dict from it
+            top_logprobs_list = content[0].get("top_logprobs", [])
+            top_logprobs_dict = {item["token"]: item["logprob"] for item in top_logprobs_list}
+
             # Get logprobs for yes/no variants
             yes_lp = max((v for k, v in top_logprobs_dict.items() if norm(k) in yes_variants), default=None)
             no_lp = max((v for k, v in top_logprobs_dict.items() if norm(k) in no_variants), default=None)
@@ -229,7 +232,7 @@ def read_dataset(task, input_file, label_strategy='all'):
         # input_list = [{'note': x['note'], 'label': x['label']} for x in orig_data]
 
         # Load template
-        yaml_dict = yaml.load(open('/work/TabLLM/templates/templates_' + task + '.yaml', "r"), Loader=yaml.FullLoader)
+        yaml_dict = yaml.load(open(get_template_path(task), "r"), Loader=yaml.FullLoader)
         prompts = yaml_dict['templates']
         # Return a list of prompts (usually only a single one with dataset_stash[1] name)
         templates_for_custom_tasks = {
@@ -248,7 +251,7 @@ def read_dataset(task, input_file, label_strategy='all'):
 
         input_list = []
         for x in orig_data:
-            # For ICO, apply label strategy: skip dropped risk levels and re-derive true_label.
+            # For ICO, apply label strategy: skip dropped risk levels and re-derive label.
             # The serialized Arrow file has no baked label — only raw riskLevel — so we
             # must inject the derived label into x before calling temp.apply(), which
             # needs it to produce the correct expected answer text ("Yes"/"No").
@@ -256,15 +259,15 @@ def read_dataset(task, input_file, label_strategy='all'):
                 strategy = ICO_LABEL_STRATEGIES[label_strategy]
                 if x['riskLevel'] in strategy['drop']:
                     continue
-                true_label = int(x['riskLevel'] in strategy['positive'])
+                label = int(x['riskLevel'] in strategy['positive'])
                 x = dict(x)              # make mutable copy
-                x['true_label'] = true_label  # inject for template: {{ answer_choices[true_label] }}
+                x['label'] = label  # inject for template: {{ answer_choices[label] }}
             else:
-                true_label = x['label']
+                label = x['label']
             row = dict(x)
             row['note'] = temp.apply(x)[0]
             row['true_answer'] = temp.apply(x)[1]
-            row['true_label'] = true_label
+            row['label'] = label
             input_list.append(row)
     else:
         raise ValueError("Invalid task name")
@@ -328,16 +331,17 @@ def main():
 
     if args.model in ['gpt3', 'gpt4o']:
         # Final output
+        os.makedirs('output', exist_ok=True)
         outputs.to_csv('output/outputs-' + args.task + start_time + '.csv', index=False)
 
 
 if __name__ == '__main__':
     import sys
-    INPUT_PATH = 'C:\\work\\TabLLM\\datasets_serialized\\ico'
+    INPUT_PATH = ICO_SERIALIZED_DIR
     # Change '--model', 'gpt3' to '--model', 'gpt4o' to use GPT-4o
     # Add '--first_n', '10' to run only the first 10 samples for a low-cost sanity check.
     if len(sys.argv) == 1:
-        sys.argv = ['query_gpt3.py', '--task', 'ico', '--input', INPUT_PATH, '--model', 'gpt4o', '--first_n', '10']
+        sys.argv = ['query_gpt3.py', '--task', 'ico', '--input', INPUT_PATH, '--model', 'gpt4o', '--label_strategy', 'all']
 
     main()
     # python query_gpt3.py --task ico --input datasets_serialized/ico --model gpt4o --label_strategy low_only

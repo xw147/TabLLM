@@ -3,7 +3,7 @@ from string import Template as StringTemplate
 
 # Test data loading
 print("Testing data loading...")
-# this function changed 'label' into 'true_label' but it's unchanged in original dataset
+# dataset uses 'label' for the ground truth label for each sample
 dataset = read_dataset('ico', 'datasets_serialized/ico_list')
 # print(f"Loaded {len(dataset)} examples")
 
@@ -12,7 +12,7 @@ for i in range(0, min(10, len(dataset))):
     example = dataset[i]
     print(f"First example keys: {example.keys()}")
     print(f"Note preview: {example['note'][:]}...")
-    print(f"Label: {example['true_label']}")
+    print(f"Label: {example['label']}")
     print(f"Answer: {example['true_answer']}")
 
 
