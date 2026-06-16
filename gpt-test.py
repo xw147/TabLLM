@@ -48,14 +48,14 @@ The headquarter country is Switzerland. The ICO duration is not disclosed. The p
 
 """
 
-# response = client.chat.completions.create(
-#     model="gpt-3.5-turbo",
-#     messages=[
-#         # {"role": "system", "content": "You are a fraud detection assistant. Consider an ICO project high-risk if it exhibits multiple common red flags."},
-#         {"role": "user", "content": f"Consider an ICO risky if it has multiple strong red flags. Is this ICO high-risk? Answer Yes or No.\n\n{ico_sample}"}
-#     ],
-#     temperature=0,
-# )
+response = client.chat.completions.create(
+    model="gpt-3.5-turbo",
+    messages=[
+        # {"role": "system", "content": "You are a fraud detection assistant. Consider an ICO project high-risk if it exhibits multiple common red flags."},
+        {"role": "user", "content": f"Consider an ICO risky if it has multiple strong red flags. Is this ICO high-risk? Answer Yes or No.\n\n{ico_sample}"}
+    ],
+    temperature=0,
+)
 
 # response = client.chat.completions.create(
 #     model="gpt-4o",
@@ -71,12 +71,12 @@ The headquarter country is Switzerland. The ICO duration is not disclosed. The p
 
 
 
-response = client.chat.completions.create(
-    model="gpt-4o",
-    messages=[
-        {"role": "user", "content": f"You are evaluating whether an ICO project shows signs of fraud. Fraud refers to potential scam, deceptive behaviour, or misleading claims. Based on the information given, does this ICO project exhibit signs of fraud? Answer with exactly one word: Yes or No.:\n\n{ico_sample}"}
-    ],
-    temperature=0,
-)
+# response = client.chat.completions.create(
+#     model="gpt-4o",
+#     messages=[
+#         {"role": "user", "content": f"You are evaluating whether an ICO project shows signs of fraud. Fraud refers to potential scam, deceptive behaviour, or misleading claims. Based on the information given, does this ICO project exhibit signs of fraud? Answer with exactly one word: Yes or No.:\n\n{ico_sample}"}
+#     ],
+#     temperature=0,
+# )
 
 print(response.choices[0].message.content)

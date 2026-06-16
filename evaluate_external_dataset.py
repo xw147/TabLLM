@@ -61,7 +61,7 @@ def main():
             'lambda': [0.1, 1.0, 10.0],   # L2 regularization
         },
         'tabpfn': {
-            'device': ['cuda'],
+            'device': ['cpu'],
             # 'n_estimators': [32]
         },
         'gpt3': {
@@ -81,7 +81,7 @@ def main():
     args_datasets = ['ico']
 
     # ── Configuration: set model and label strategy here ──────────────────────
-    args.model = 'lightgbm'           # choices: 'lr', 'xgboost', 'lightgbm', 'tabpfn', 'gpt3'
+    args.model = 'gpt3'           # choices: 'lr', 'xgboost', 'lightgbm', 'tabpfn', 'gpt3'
     args.label_strategy = 'all' # choices: 'all', 'high_only', 'low_only'
     # ──────────────────────────────────────────────────────────────────────────
 

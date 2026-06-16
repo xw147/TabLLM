@@ -71,11 +71,11 @@ def get_model_results_json(dataset_name: str, model_name: str) -> Path:
 
 # Input: GPT output CSV produced by query_gpt3.py.
 # Update this to point at the CSV you want to evaluate.
-GPT_EVAL_INPUT_CSV  = OUTPUT_DIR / "outputs-ico-20260424-171444-gpt4o.csv"
+GPT_EVAL_INPUT_CSV  = OUTPUT_DIR / "outputs-ico-20260616-120036.csv"
 
 # Output: metrics summary CSV written by evaluate_gpt3_from_csv().
 # Leave as None to auto-generate a timestamped filename at runtime.
-GPT_EVAL_OUTPUT_CSV = OUTPUT_DIR / "ico_gpt4o_metrics_summary.csv"
+GPT_EVAL_OUTPUT_CSV = OUTPUT_DIR / "ico_gpt3_metrics_summary.csv"
 
 # ============================================================================
 # HELPER: per-dataset data directory
