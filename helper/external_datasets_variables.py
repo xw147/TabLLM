@@ -683,11 +683,11 @@ ico_feature_names = [
     ('has_github', 'GitHub presence'),
     ('has_telegram', 'Telegram presence'),
     # for LLM features
-    # ('slogan', 'slogan'),
-    # ('categories', 'categories'),
-    # ('restrictedAreas_combined', 'excluded investor regions'),
-    # ('accepting_combined', 'accepted payments'),
-    # ('min_investment_combined', 'minimum investment')
+    ('slogan', 'slogan'),
+    ('categories', 'categories'),
+    ('restrictedAreas_combined', 'excluded investor regions'),
+    ('accepting_combined', 'accepted payments'),
+    ('min_investment_combined', 'minimum investment')
 ]
 
 # Basic preprocessing configuration for ICO data
@@ -700,7 +700,13 @@ template_config_ico = {
         'price_USD': lambda x: f"${x:.4f}" if pd.notna(x) and x > 0 else "not disclosed",
         'teamSize_combined': lambda x: f"{int(x)} members" if pd.notna(x) and x > 0 else "not disclosed",
         'tokensForSale_combined': lambda x: f"{int(x):,}" if pd.notna(x) and x > 0 else "not disclosed",
-        'distributedInICO_combined': lambda x: f"{x:.2f}" if pd.notna(x) else "not disclosed"
+        'distributedInICO_combined': lambda x: f"{x:.2f}" if pd.notna(x) else "not disclosed",
+        # LLM features
+        'slogan': lambda x: x if pd.notna(x) else "not disclosed",
+        'categories': lambda x: x if pd.notna(x) else "not disclosed",
+        'restrictedAreas_combined': lambda x: x if pd.notna(x) else "not disclosed",
+        'accepting_combined': lambda x: x if pd.notna(x) else "not disclosed",
+        'min_investment_combined': lambda x: x if pd.notna(x) else "not disclosed",
     }
 }
 

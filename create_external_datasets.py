@@ -415,7 +415,7 @@ def load_train_validation_test(dataset_name, data_dir, ico_label_strategy='all')
 
     elif dataset_name == "ico":
         # Load ICO fraud dataset
-        dataset = pd.read_csv(data_dir / 'common_features_rowsRemoved8.csv')
+        dataset = pd.read_csv(data_dir /'forLLM_features_rowsRemoved8.csv')
         # Apply label strategy: assigns binary label and drops excluded riskLevel rows.
         # original_size is measured AFTER filtering so the split assert stays correct.
         dataset = apply_ico_label_strategy(dataset, ico_label_strategy)
@@ -446,9 +446,11 @@ def load_train_validation_test(dataset_name, data_dir, ico_label_strategy='all')
         'jungle': 7,
         'wine': 12,
         'calhousing': 9,
-        'ico': 22  # 22 features + 1 label for common features
+        'ico': 27  
+        # 21 common features + 1 label for common features, not count name and token_symbol
         # 'ico': 36  # for ML features
-        # 'ico': 27  # for ML features
+        # 'ico': 27 # for LLM features
+
     }
     feature_columns = [c for c in dataset.columns if not is_metadata_column(c)]
     assert dataset_name in dataset_specs.keys() and len(feature_columns) == dataset_specs[dataset_name]

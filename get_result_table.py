@@ -63,7 +63,7 @@ TFEW_METRIC_MAP = {
 
 def fmt(mean, std):
     """Format mean (std) string."""
-    return f"{mean:.2f} ({std:.2f})"
+    return f"{mean:.4f} ({std:.4f})"
 
 
 def load_tfew_results(exp_name_template, exp_out_dir="exp_out"):
