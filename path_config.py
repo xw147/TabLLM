@@ -18,7 +18,7 @@ from pathlib import Path
 # CONFIGURE YOUR ROOT DIRECTORY HERE
 # ============================================================================
 
-ROOT_DIR = Path("/Users/work")   # <-- EDIT THIS LINE for your system
+ROOT_DIR = Path("/users/busxwe/work")   # <-- EDIT THIS LINE for your system
 
 # ============================================================================
 # PROJECT ROOTS

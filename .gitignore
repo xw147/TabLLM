@@ -9,7 +9,7 @@ __pycache__/
 # results
 output/
 results/
-datasets/
-datasets_serialized/
+datasets
+datasets_serialized
 exp_out/
 exp_out_defaultHP/
